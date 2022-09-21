@@ -1,60 +1,60 @@
 # Commit message guidelines
 
-DCO (Developer Certificate of Origin)
-Signing the DCO ensures the project that we have the right to use your code.
-The most popular way to do DCO is to sign off your username and email address in the git command line.
+[https://www.conventionalcommits.org/en/v1.0.0/#summary](https://www.conventionalcommits.org/en/v1.0.0/#summary)
 
-First, configure your local git install.
+The Conventional Commits specification is a lightweight convention on top of commit messages. It provides an easy set of rules for creating an explicit commit history; which makes it easier to write automated tools on top of. This convention dovetails with SemVer, by describing the features, fixes, and breaking changes made in commit messages.
 
-$ git config --global user.name "John Doe" 
-$ git config --global user.email johndoe@example.com
-Obviously, you should use your own name and the email address associated with your GitHub user account.
+The commit message should be structured as follows:
 
-Now, every time you commit new code in git, just add a signoff statement via the -s flag.
+```
+<type>[optional scope]: <description>
 
-$ git commit -s -m "This is my commit message"
+[optional body]
 
+[optional footer(s)]
+```
 
-A good commit message should describe what changed and why.
+The commit contains the following structural elements, to communicate intent to the consumers of your library:
 
-1. The first line should:
-   * contain a short description of the change (preferably 50 characters or
-     less, and no more than 72 characters)
-   * be entirely in lowercase with the exception of proper nouns, acronyms, and
-   the words that refer to code, like function/variable names
-   * be prefixed with the name of the changed subsystem and start with an
-   imperative verb. Check the output of `git log --oneline files/you/changed` to
-   find out what subsystems your changes touch.
+- **fix**: a commit of the _type_ `fix` patches a bug in your codebase (this correlates with **PATCH** in Semantic Versioning).
+- **feat**: a commit of the _type_ `feat` introduces a new feature to the codebase (this correlates with **MINOR** in Semantic Versioning).
+- **BREAKING CHANGE**: a commit that has a footer `BREAKING CHANGE:`, or appends a `!` after the type/scope, introduces a breaking API change (correlating with **MAJOR** in Semantic Versioning). A BREAKING CHANGE can be part of commits of any type.
+- types other than fix: and feat: are allowed, for example @commitlint/config-conventional (based on the the Angular convention) recommends build:, chore:, ci:, docs:, style:, refactor:, perf:, test:, and others.
+- footers other than BREAKING CHANGE: <description> may be provided and follow a convention similar to git trailer format.
+  Additional types are not mandated by the Conventional Commits specification, and have no implicit effect in Semantic Versioning (unless they include a BREAKING CHANGE). A scope may be provided to a commit’s type, to provide additional contextual information and is contained within parenthesis, e.g., `feat(parser): add ability to parse arrays.`
 
-   Examples:
-   * `net: add localAddress and localPort to Socket`
-   * `src: fix typos in doc.go`
+Allowed types:
 
-1. Keep the second line blank.
-1. Wrap all other lines at 72 columns (except for long URLs).
+```
+["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test"]
+```
 
-1. If your patch fixes an open issue, you can add a reference to it at the end
-   of the log. Use the `Fixes:` prefix and the full issue URL. For other
-   references use `Refs:`.
+Allowed scopes:
 
-   Examples:
-   * `Fixes: https://github.com/indykite/jarvis/issues/42`
-   * `Refs: https://eslint.org/docs/rules/space-in-parens.html`
-   * `Refs: https://github.com/indykite/jarvis/pull/88`
+```json
+["logging", "services", "docs", "dependencies", "auth", "api", "pkg", "proto", "cypher", "sdk", "schema", "test", "master", "examples"]
+```
 
-1. If your commit introduces a breaking change (`semver-major`), it should contain an explanation about the reason of the breaking change, which situation would trigger the breaking change and what is the exact change.
+## Examples
 
-Sample complete commit message:
+## Commit message with description, scope and breaking change footer
 
-```text
-athena: explain the commit in one line
+```
+feat(component): add new indykite feature
 
-The body of the commit message should be one or more paragraphs, explaining
-things in more detail. Please word-wrap to keep columns to 72 characters or
-less.
+BREAKING CHANGE: replaces configuration file syntax
+```
 
-Fixes: https://github.com/indykite/jarvis/issues/42
-Refs: https://eslint.org/docs/rules/space-in-parens.html
+## Commit message with no body
+
+```
+feat: add new indykite feature
+```
+
+## Commit message with scope
+
+```
+feat(component): add new indykite feature
 ```
 
 If you are new to contributing to IndyKite, please try to do your best at
