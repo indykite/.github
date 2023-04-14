@@ -14,9 +14,6 @@ Cloud Native | Decentralized | Open Source
 </div>
 
 <div align="left">
-  
-#### Community
-We are all about community and open source. In just a few weeks our community will open it's doors and be available here: [IndyKite One](https://indykite.one).  If you head over there now you can sign up and request early access. We'd love for you to join us there.
 
 #### Code of Conduct
 To make sure that our community is a safe space for everyone we have put together a code of conduct, which you can read here [Code of Conduct](https://github.com/indykite/.github/blob/master/CODE-OF-CONDUCT.md)
@@ -35,9 +32,9 @@ We take security pretty seriously so if you happen to find something we've misse
 
 <div align="left">
   
-#### Documentation / Community
+#### Documentation
   
-[https://indykite.one](https://indykite.one)
+[https://docs.indykite.com](https://docs.indykite.com)
   
 </div>
 
