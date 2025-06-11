@@ -1,5 +1,5 @@
 <div align="left">
-<img src="https://github.com/indykite/.github/blob/79a9effb698ee9e82bdbd43bccf52db111b02343/assets/squareformatlogo.png" alt="IndyKite Orange Logo" width="100px" height="100px" align="right">
+<img src="[https://github.com/indykite/.github/blob/79a9effb698ee9e82bdbd43bccf52db111b02343/assets/squareformatlogo.png](https://github.com/indykite/.github/blob/master/assets/squareformatlogo.png)" alt="IndyKite Orange Logo" width="100px" height="183px" align="right">
 </div>  
 
  
