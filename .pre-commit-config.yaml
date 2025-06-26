@@ -1,0 +1,149 @@
+---
+#
+# Usage & installation, the first configures the default stages only, the others must be installed explicitly:
+#   pre-commit install
+#   pre-commit install -t post-checkout
+#
+# Prerequisites:
+#   ! keep the below line updated!
+#   brew install yamlfmt yamllint markdownlint-cli2 shellcheck
+#
+# Update hooks and their dependencies regularly via:
+#   (remote) pre-commit autoupdate
+#   (local) brew update && brew upgrade -g
+#
+default_stages: [pre-commit, pre-push]
+default_install_hook_types: [pre-commit, commit-msg]
+fail_fast: false
+
+repos:
+  - repo: local
+    hooks:
+      # pre-commit validations
+      - id: pre-commit-validate-config
+        name: pre-commit/validate-config
+        files: .pre-commit-config.yaml
+        entry: pre-commit validate-config
+        language: system
+        always_run: false
+        pass_filenames: false
+      - id: pre-commit-validate-manifest
+        name: pre-commit/validate-manifest
+        files: .pre-commit-config.yaml
+        entry: pre-commit validate-manifest
+        language: system
+        always_run: false
+        pass_filenames: false
+
+  #
+  # Commit Message linting
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.22.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        args: [--strict]
+        additional_dependencies:
+          - "@commitlint/config-conventional"
+
+  #
+  # inspired by https://github.com/antonbabenko/pre-commit-terraform/blob/master/.pre-commit-config.yaml
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Git style
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-vcs-permalinks
+      - id: forbid-new-submodules
+      # - id: forbid-submodules # XXX: either of two is enough
+      - id: no-commit-to-branch
+        name: no-commit-to-master
+        args: [--branch, dev, --branch, master, --branch, main]
+
+      # Common errors
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: destroyed-symlinks
+
+      # Cross platform
+      # - id: check-illegal-windows-names
+      - id: check-case-conflict
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # Format linters
+      # 'check-yaml' and 'sort-simple-yaml' disabled intentionally, use hooks below
+      - id: check-xml
+      - id: check-toml
+      - id: check-json
+      - id: pretty-format-json
+
+      # Security
+      - id: detect-private-key
+      - id: detect-aws-credentials
+        args:
+          - --allow-missing-credentials
+
+  #
+  # Detect hardcoded secrets
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+        name: gitleaks
+
+  #
+  # YAML
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.17.2
+    hooks:
+      - id: yamlfmt
+        language: system
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        language: system
+        args: [--strict]
+
+  #
+  # Markdown
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.18.1
+    hooks:
+      - id: markdownlint-cli2
+        name: markdownlint
+        language: system
+
+  #
+  - repo: local
+    hooks:
+      #
+      # POST-CHECKOUT
+      # install explicitly with: pre-commit install -t post-checkout
+      - id: git-pull
+        name: git pull
+        entry: bash -c '[[ $(git branch --show-current) =~ (dev|main|master) ]] && git pull --all || true'
+        language: system
+        stages: [post-checkout]
+        verbose: true
+        always_run: true
+        pass_filenames: false
+
+      - id: git-branch-delete-stale
+        name: Delete stale committed branches
+        entry: >-
+          bash -c '[[ $(git branch --show-current) =~ (dev|main|master) ]] \
+            && (git fetch -p && git branch -vv | grep ":\ gone]" | awk "{ print \$1 }" | xargs git branch -D) \
+            || true'
+        language: system
+        stages: [post-checkout]
+        verbose: true
+        always_run: true
+        pass_filenames: false
