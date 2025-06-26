@@ -1,0 +1,29 @@
+---
+# https://yamllint.readthedocs.io/en/stable/configuration.html
+
+yaml-files:
+  - '*.yaml'
+  - '*.yml'
+  - '.yamlfmt'
+  - '.yamllint'
+
+extends: default
+ignore: |
+  .git/
+  *_cache/
+  *-info/
+  build/
+  dist/
+  node_modules/
+  tmp/
+  .terraform/
+
+rules:
+  braces:
+    min-spaces-inside: 1
+    max-spaces-inside: 1
+  comments:
+    min-spaces-from-content: 1
+  empty-values: enable
+  line-length:
+    max: 160
