@@ -17,6 +17,11 @@ default_install_hook_types: [pre-commit, commit-msg]
 fail_fast: false
 
 repos:
+  - repo: ssh://git@github.com/indykite/ops-common
+    rev: "e05fe46e14e4938f9494ebbcc4ba31145ed7b93d" # using a branch name (or HEAD) is not supported
+    hooks:
+      - id: pre-commit-autoupdate
+
   - repo: local
     hooks:
       # pre-commit validations
