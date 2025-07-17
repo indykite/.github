@@ -22,3 +22,19 @@ At any time, the checks against **_ALL_** files in the repository can be execute
 ```sh
 pre-commit run -a
 ```
+
+## Git Transport Protocol
+
+There are certain pieces of code referencing to org's repositories using either SSH or HTTPS. Depending on personal preference it is easy to override those by executing either or:
+
+- enforcing SSH
+
+  ```sh
+  git config --global url.ssh://git@github.com/indykite/.insteadOf https://github.com/indykite/
+  ```
+
+- enforcing HTTPS
+
+  ```sh
+  git config --global url.https://github.com/indykite/.insteadOf ssh://git@github.com/indykite/
+  ```
