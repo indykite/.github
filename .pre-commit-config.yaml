@@ -6,44 +6,41 @@
 #
 # Prerequisites:
 #   ! keep the below line updated!
-#   brew install yamlfmt yamllint markdownlint-cli2 shellcheck
+#   brew install yamlfmt yamllint markdownlint-cli2
 #
 # Update hooks and their dependencies regularly via:
-#   (remote) pre-commit autoupdate
+#   (remote) pre-commit autoupdate --freeze --jobs $(getconf _NPROCESSORS_ONLN)
 #   (local) brew update && brew upgrade -g
 #
 default_stages: [pre-commit, pre-push]
 default_install_hook_types: [pre-commit, commit-msg]
-fail_fast: false
+minimum_pre_commit_version: 4.0.0
 
 repos:
-  - repo: ssh://git@github.com/indykite/ops-common
-    rev: "e05fe46e14e4938f9494ebbcc4ba31145ed7b93d" # using a branch name (or HEAD) is not supported
+  - repo: meta
     hooks:
-      - id: pre-commit-autoupdate
+      # - id: check-hooks-apply
+      - id: check-useless-excludes
+        name: pre-commit/check-useless-excludes
 
-  - repo: local
+  - repo: ssh://git@github.com/indykite/ops-common
+    rev: "879296613518506320ab098b3918334ed857f099" # using a branch name (or HEAD) is not supported
     hooks:
+      # POST-CHECKOUT
+      # install explicitly with: pre-commit install -t post-checkout
+      - id: git-pull
+      - id: git-branch-delete-stale
+
       # pre-commit validations
+      # - id: pre-commit-autoupdate # done via 'renovate'; left for reference and possible options
+      #   args: [--freeze] # store hashes in 'rev' instead of tag names
       - id: pre-commit-validate-config
-        name: pre-commit/validate-config
-        files: .pre-commit-config.yaml
-        entry: pre-commit validate-config
-        language: system
-        always_run: false
-        pass_filenames: false
       - id: pre-commit-validate-manifest
-        name: pre-commit/validate-manifest
-        files: .pre-commit-config.yaml
-        entry: pre-commit validate-manifest
-        language: system
-        always_run: false
-        pass_filenames: false
 
   #
   # Commit Message linting
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
-    rev: v9.22.0
+    rev: 879f5400493f84c8b683bdeb3366a8439ca17858 # frozen: v9.22.0
     hooks:
       - id: commitlint
         stages: [commit-msg]
@@ -54,7 +51,7 @@ repos:
   #
   # inspired by https://github.com/antonbabenko/pre-commit-terraform/blob/master/.pre-commit-config.yaml
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: cef0300fd0fc4d2a87a85fa2093c6b283ea36f4b # frozen: v5.0.0
     hooks:
       # Git style
       - id: check-added-large-files
@@ -88,6 +85,7 @@ repos:
       - id: check-toml
       - id: check-json
       - id: pretty-format-json
+        args: [--no-sort-keys]
 
       # Security
       - id: detect-private-key
@@ -98,7 +96,7 @@ repos:
   #
   # Detect hardcoded secrets
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.27.2
+    rev: 39fdb480a06768cc41a84ef86959c07ff33091c4 # frozen: v8.28.0
     hooks:
       - id: gitleaks
         name: gitleaks
@@ -106,12 +104,12 @@ repos:
   #
   # YAML
   - repo: https://github.com/google/yamlfmt
-    rev: v0.17.2
+    rev: a69a26f0e2a6d5768f3496239ba1e41c6bb74b6e # frozen: v0.17.2
     hooks:
       - id: yamlfmt
         language: system
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.37.1
+    rev: 79a6b2b1392eaf49cdd32ac4f14be1a809bbd8f7 # frozen: v1.37.1
     hooks:
       - id: yamllint
         language: system
@@ -120,35 +118,8 @@ repos:
   #
   # Markdown
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.18.1
+    rev: d7a4f7cf4914d3bffb9b83bdbc45fd2a00c91ff9 # frozen: v0.18.1
     hooks:
       - id: markdownlint-cli2
         name: markdownlint
         language: system
-
-  #
-  - repo: local
-    hooks:
-      #
-      # POST-CHECKOUT
-      # install explicitly with: pre-commit install -t post-checkout
-      - id: git-pull
-        name: git pull
-        entry: bash -c '[[ $(git branch --show-current) =~ (dev|main|master) ]] && git pull --all || true'
-        language: system
-        stages: [post-checkout]
-        verbose: true
-        always_run: true
-        pass_filenames: false
-
-      - id: git-branch-delete-stale
-        name: Delete stale committed branches
-        entry: >-
-          bash -c '[[ $(git branch --show-current) =~ (dev|main|master) ]] \
-            && (git fetch -p && git branch -vv | grep ":\ gone]" | awk "{ print \$1 }" | xargs git branch -D) \
-            || true'
-        language: system
-        stages: [post-checkout]
-        verbose: true
-        always_run: true
-        pass_filenames: false

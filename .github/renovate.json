@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "schedule:weekly",
+    ":dependencyDashboard",
+    ":enablePreCommit",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(ci)"
+  ],
+  "semanticCommits": "disabled",
+  "commitMessagePrefix": "chore(deps): ",
+  "commitMessageAction": "update",
+  "major": {
+    "minimumReleaseAge": "14 days"
+  },
+  "ignoreDeps": [],
+  "ignorePaths": [],
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "*"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "addLabels": [
+        "SemVer Major"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "addLabels": [
+        "SemVer Minor"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "patch",
+        "digest",
+        "bump"
+      ],
+      "addLabels": [
+        "SemVer Patch"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "patch",
+        "digest",
+        "bump"
+      ],
+      "groupName": "all patch dependencies",
+      "groupSlug": "all-patch"
+    }
+  ]
+}
