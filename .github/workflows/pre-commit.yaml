@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: commitlint
-        uses: indykite/.github/.github/actions/commitlint@ci/github-workflow-sast # @master
+        uses: indykite/.github/.github/actions/commitlint@master
         with:
           is_strict: "true"
           release_bot: "${{ vars.RELEASE_BOT }}"
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: pre-commit
-        uses: indykite/.github/.github/actions/pre-commit@ci/github-workflow-sast # @master
+        uses: indykite/.github/.github/actions/pre-commit@master
         with:
           github_token: ${{ secrets.INDYKITEONE_PAT }}
           checkout_fetch_master: "${{ vars.GH_CHECKOUT_FETCH_MASTER }}"
@@ -51,6 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: trivy
-        uses: indykite/.github/.github/actions/trivy@ci/github-workflow-sast # @master
+        uses: indykite/.github/.github/actions/trivy@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
