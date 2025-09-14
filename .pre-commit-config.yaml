@@ -5,9 +5,8 @@
 #   pre-commit install -t post-checkout -t commit-msg
 #
 # Prerequisites:
-#   ! hard dependency on 'ops-common' repo being in the same root folder, so shareable commitlint config can be used!
 #   ! keep the below line updated! It's parsed and used for dependency installation by shared GitHub Workflow: ops-common//.github/workflows/pr-pre-commit.yaml
-#   brew install yamlfmt yamllint markdownlint-cli2
+#   brew install pre-commit yamlfmt yamllint markdownlint-cli2 trivy
 #
 # Update hooks and their dependencies regularly via:
 #   (remote) pre-commit autoupdate --jobs $(getconf _NPROCESSORS_ONLN)
@@ -26,10 +25,9 @@ repos:
         name: pre-commit/check-useless-excludes
 
   - repo: ssh://git@github.com/indykite/ops-common
-    rev: "cbef1dd85992d17cfe82fe69704c4a95cc03a8fc" # using a branch name (or HEAD) is not supported
+    rev: "93f7e5f4c05a1b86d36993cd0b2a47fd5cfba54b" # using a branch name (or HEAD) is not supported
     hooks:
-      # POST-CHECKOUT
-      # install explicitly with: pre-commit install -t post-checkout
+      # NON-DEFAULT stage, install explicitly with: pre-commit install -t post-checkout
       - id: git-pull
       - id: git-branch-delete-stale
 
@@ -39,9 +37,20 @@ repos:
       - id: pre-commit-validate-config
       - id: pre-commit-validate-manifest
 
+      # SAST
+      - id: trivy
+
+  #
+  # Renovate
+  - repo: https://github.com/renovatebot/pre-commit-hooks # ci:ignore:OK to validate locally only, otherwise it adds 850MB+ to unpacked cache
+    rev: "41.113.2"
+    hooks:
+      - id: renovate-config-validator
+        args: [--strict]
+
   #
   # Commit Message linting
-  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook # ci:ignore:executed under a separate GitHub action
     rev: v9.22.0
     hooks:
       # NON-DEFAULT stage, install explicitly with: pre-commit install -t commit-msg
@@ -49,7 +58,7 @@ repos:
         stages: [commit-msg]
         # using shareable config across the org
         # 'strict' equals to 'failOnWarnings' in Github Action setting
-        args: ["--strict", "--config", "../ops-common/.github/actions/commitlint/.commitlintrc.mjs"]
+        args: ["--strict", "--config", "./.github/actions/commitlint/.commitlintrc.mjs"]
         additional_dependencies:
           - "@commitlint/config-conventional"
           - commitlint-plugin-function-rules
@@ -109,23 +118,44 @@ repos:
 
   #
   # YAML
-  - repo: https://github.com/google/yamlfmt
-    rev: v0.17.2
+  - repo: local
+    hooks:
+      # place any overrides in '.actionlint.yaml' https://github.com/rhysd/actionlint/blob/main/docs/config.md
+      #  args: ["-config-file=.actionlint.yaml"]
+      - id: actionlint-system
+        name: github-actionlint
+        language: system
+        entry: actionlint
+        types: ["yaml"]
+        files: ^\.github/workflows/
+  # - repo: https://github.com/google/yamlfmt <- "language: g.olang" slower & takes larger CI cache comparing to "system"
+  #   rev: v0.17.2
+  - repo: local
     hooks:
       - id: yamlfmt
+        name: yamlfmt
         language: system
-  - repo: https://github.com/adrienverge/yamllint
-    rev: v1.37.1
+        entry: yamlfmt
+        types: [yaml]
+  # - repo: https://github.com/adrienverge/yamllint <- "language: python" slower & takes larger CI cache comparing to "system"
+  #   rev: v1.37.1
+  - repo: local
     hooks:
       - id: yamllint
+        name: yamllint
         language: system
-        args: [--strict]
+        entry: yamllint
+        args: ["--strict"]
+        types: [file, yaml]
 
   #
   # Markdown
-  - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.18.1
+  # - repo: https://github.com/DavidAnson/markdownlint-cli2 <- "language: node" slower & takes larger CI cache comparing to "system"
+  #   rev: v0.18.1
+  - repo: local
     hooks:
-      - id: markdownlint-cli2
+      - id: markdownlint
         name: markdownlint
         language: system
+        entry: markdownlint-cli2
+        types: [markdown]

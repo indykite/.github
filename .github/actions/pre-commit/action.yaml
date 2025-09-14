@@ -1,0 +1,150 @@
+---
+name: pre-commit
+description: re-usable 'pre-commit' Github Action for formatting and linting
+
+inputs:
+  action_timeout:
+    description: Allowed time for action execution in minutes
+    required: false
+    default: "10"
+  github_token:
+    description: Github access token for 'ops-common//pre-commit-autoupdate' to work, must be PAT-type
+    required: false
+    default: ""
+  checkout_fetch_master:
+    description: Whether to fetch 'origin/master', requires for certain checks, controlled via env.GH_CHECKOUT_FETCH_MASTER
+    default: "0"
+    required: false
+  pre_commit_skip:
+    description: Any steps to skip, useful for "heavy" or completed parallel tests, i.e. golang, commitlint
+    default: ""
+    required: false
+  tf_plugin_cache_dir:
+    description: Terraform plugin cache dir, replacement for action-wide env var. Normally, do not need to be updated
+    default: "~/.terraform.d/plugin-cache"
+    required: false
+  trivy_cache_dir:
+    description: Trivy DB cache dir, replacement for action-wide env var. Normally, do not need to be updated
+    default: "~/.cache/trivy"
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: actions/checkout/fetch-depth
+      id: fetch-depth
+      shell: bash
+      run: echo "fetch-depth=$(expr ${{ github.event.pull_request.commits }} + 1)" >> "$GITHUB_OUTPUT"
+
+    - name: actions/checkout
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 - https://github.com/actions/checkout/releases
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }} # all commits for the given PR +1 more
+
+    - name: actions/checkout/fetch ${{ github.base_ref }}
+      if: inputs.checkout_fetch_master == '1'
+      shell: bash
+      run: git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+
+    - name: Checking commit ${{ env.GITHUB_SHA }}
+      id: action-prep
+      shell: bash
+      run: |
+        echo "Checking commit $GITHUB_SHA"
+        echo "IS_TERRAFORM=$(grep -c terraform .pre-commit-config.yaml)" >> "$GITHUB_OUTPUT"
+        echo "IS_GOLANG=$(grep -cE "(brew install.* go |golang)" .pre-commit-config.yaml)" >> "$GITHUB_OUTPUT"
+        echo "CACHE_MONTH=$(date +'%Y%m')" >> "$GITHUB_OUTPUT"
+
+    - name: actions/cache/restore
+      uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4 - https://github.com/actions/cache/releases
+      id: cache
+      with:
+        lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
+        path: |
+          /home/linuxbrew/.linuxbrew
+          ~/.cache
+          ${{ inputs.trivy_cache_dir }}
+          ${{ inputs.tf_plugin_cache_dir }}
+        # expire cache monthly, so CLI tools can be kept updated - "a cache today is immutable and cannot be updated"
+        # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
+        key: >-
+          key: ${{ runner.os }}-pre-commit-${{ hashFiles('./.pre-commit-config.y*', format('{0}/.pkg_map.rc', github.action_path) )
+          }}-state-${{ steps.action-prep.outputs.CACHE_MONTH }}
+
+    # setup prerequisites
+    - name: setup/python3
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0 - https://github.com/actions/setup-python/releases
+      if: (github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request'
+      with:
+        # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
+        python-version: "3.13"
+
+    - name: setup/opentofu
+      uses: opentofu/setup-opentofu@000eeb8522f0572907c393e8151076c205fdba1b # v1.0.6 - https://github.com/opentofu/setup-opentofu/releases
+      if: >-
+        steps.action-prep.outputs.IS_TERRAFORM > 0
+        && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
+
+    - name: setup/golang
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0 - https://github.com/actions/setup-go/releases
+      with:
+        go-version-file: go.mod
+      if: >-
+        steps.action-prep.outputs.IS_GOLANG > 0
+        && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
+
+    #
+    # prepare env
+    - name: setup/pre-commit
+      # if cache is present, no need to re-run on 'master'
+      if: (github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request'
+      shell: bash
+      env:
+        IS_CACHE: ${{ steps.cache.outputs.cache-hit }}
+        IS_DEBUG: ${{ runner.debug }} # set only if debug logging is enabled, and always has the value of 1
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        TG_PROVIDER_CACHE: 1
+        TG_PROVIDER_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
+        TF_PLUGIN_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
+        TRIVY_CACHE_DIR: ${{ inputs.trivy_cache_dir }}
+      run: |-
+        # setup/pre-commit
+        timeout ${{ inputs.action_timeout }}m $GITHUB_ACTION_PATH/script.sh
+
+    # save early, so if pre-commit fails, the cache with prerequisites is available
+    - name: actions/cache/save
+      uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4 - https://github.com/actions/cache/releases
+      if: (!steps.cache.outputs.cache-hit)
+      with:
+        path: |
+          /home/linuxbrew/.linuxbrew
+          ~/.cache
+          ${{ inputs.trivy_cache_dir }}
+          ${{ inputs.tf_plugin_cache_dir }}
+        key: >-
+          key: ${{ runner.os }}-pre-commit-${{ hashFiles('./.pre-commit-config.y*', format('{0}/.pkg_map.rc', github.action_path) )
+          }}-state-${{ steps.action-prep.outputs.CACHE_MONTH }}
+
+    #
+    # execute pre-commit checks
+    - name: pre-commit checks
+      # run actual checks against PR only
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        IS_DEBUG: ${{ runner.debug }} # set only if debug logging is enabled, and always has the value of 1
+        PRE_COMMIT_SKIP: ${{ inputs.pre_commit_skip }}
+        TG_PROVIDER_CACHE: 1
+        TG_PROVIDER_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
+        TF_PLUGIN_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
+        TRIVY_CACHE_DIR: ${{ inputs.trivy_cache_dir }}
+      run: |-
+        # run/pre-commit
+        PRE_COMMIT_ARGS=("--all-files" "--show-diff-on-failure" "--color=always" "--hook-stage" "pre-commit")
+        if [[ ${IS_DEBUG} == "1" ]]; then
+            PRE_COMMIT_ARGS+=("--verbose")
+        fi
+
+        # sanitize PRE_COMMIT_SKIP, remove any spaces
+        SKIP="${PRE_COMMIT_SKIP// /}" time pre-commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}"
