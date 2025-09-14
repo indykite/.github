@@ -1,0 +1,56 @@
+---
+name: SAST Linting
+
+on: # yamllint disable-line rule:truthy
+  pull_request:
+    branches: ["dev", "develop", "main", "master"]
+  # "... reusing cache across feature branches is not allowed to provide cache isolation.
+  # However, if both feature branches are from the default branch, a good way to achieve this is to ensure that the default branch has a cache.
+  # This cache will then be consumable by both feature branches."
+  # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#use-cache-across-feature-branches
+  push:
+    branches: ["dev", "develop", "main", "master"]
+  schedule:
+    # GitHub Actions does not support the non-standard syntax @monthly, @weekly, @daily, etc.
+    # - cron: "15 0 * * *" # daily at 00:15 UTC
+    - cron: "15 0 1 * *" # low activity repos can do just the first day of the month at 00:15 UTC
+
+permissions:
+  contents: write # required for trivy to upload artifacts
+  pull-requests: read # required for commitlint
+
+jobs:
+  commitlint:
+    name: commitlint
+    if: github.event_name == 'pull_request' # no need in cache on 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: commitlint
+        uses: indykite/.github/.github/actions/commitlint@master
+        with:
+          is_strict: "true"
+          release_bot: "${{ vars.RELEASE_BOT }}"
+
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: pre-commit
+        uses: indykite/.github/.github/actions/pre-commit@master
+        with:
+          github_token: ${{ secrets.INDYKITEONE_PAT }}
+          checkout_fetch_master: "${{ vars.GH_CHECKOUT_FETCH_MASTER }}"
+          action_timeout: "${{ vars.PRE_COMMIT_ACTION_TIMEOUT != null && vars.PRE_COMMIT_ACTION_TIMEOUT || 10 }}" # in minutes
+          pre_commit_skip: >-
+            commitlint,trivy,trivy-conf,trivy-filesystem
+            ${{ vars.PRE_COMMIT_SKIP != null && ',' || '' }}${{ vars.PRE_COMMIT_SKIP }}
+            ${{ format('{0}', github.event_name != 'pull_request' && ',pre-commit-autoupdate,no-commit-to-branch' || '' ) }}
+
+  trivy:
+    name: trivy
+    runs-on: ubuntu-latest
+    steps:
+      - name: trivy
+        uses: indykite/.github/.github/actions/trivy@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
