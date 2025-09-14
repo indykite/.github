@@ -6,7 +6,7 @@
 #
 # Prerequisites:
 #   ! keep the below line updated! It's parsed and used for dependency installation by shared GitHub Workflow: ops-common//.github/workflows/pr-pre-commit.yaml
-#   brew install pre-commit yamlfmt yamllint markdownlint-cli2 trivy
+#   brew install pre-commit yamlfmt yamllint actionlint markdownlint-cli2 trivy
 #
 # Update hooks and their dependencies regularly via:
 #   (remote) pre-commit autoupdate --jobs $(getconf _NPROCESSORS_ONLN)
