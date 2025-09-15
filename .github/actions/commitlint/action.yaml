@@ -1,7 +1,10 @@
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Action and synced from a private repo!
+#
 ---
 name: commitlint
 description: Lint commit messages
-
 inputs:
   is_strict:
     description: Fail on warnings, i.e. enable strict mode; result code 2 for warnings, 3 for errors
@@ -11,35 +14,32 @@ inputs:
     description: Release bot username
     required: false
     default: ""
-
 runs:
   using: composite
   steps:
     - name: actions/checkout
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 - https://github.com/actions/checkout/releases
-
     - name: commitlint config file
       id: commitlint-conf
-      if: github.actor != inputs.release_bot
+      if: github.actor != inputs.release_bot # FIXME: workaround for failing JS
       shell: bash
       run: |
         echo "Searching for commitlint config..."
         CONFIG_FILE=$(ls -a1 | grep -E "commit(lint|\.config)" | head -n1 || true)
-
         if [[ -z "${CONFIG_FILE}" ]]; then
-          echo "No local config found. Using the org shared '.github/actions/commitlint/.commitlintrc.mjs'"
+          echo "No local config found. Using the org shared '//.github/actions/commitlint/.commitlintrc.mjs'"
           echo "config_file=${{ github.action_path }}/.commitlintrc.mjs" >> "$GITHUB_OUTPUT"
         else
           echo "Found local config: ${CONFIG_FILE}"
           echo "config_file=${CONFIG_FILE#./}" >> "$GITHUB_OUTPUT"
         fi
-
     - name: commitlint
       uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1 - https://github.com/wagoid/commitlint-github-action/tags
-      if: github.actor != inputs.release_bot
+      if: github.actor != inputs.release_bot # FIXME: workaround for failing JS
       env:
         RELEASE_BOT: "${{ inputs.release_bot }}"
       with:
+        # will fail with double quotes!!
         failOnWarnings: ${{ inputs.is_strict == 'true' }}
         configFile: ${{ steps.commitlint-conf.outputs.config_file }}
         commitDepth: 1

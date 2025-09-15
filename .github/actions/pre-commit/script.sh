@@ -1,50 +1,43 @@
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Action and synced from a private repo!
+#
 #!/bin/bash
 # pipefail - BASH only, not supported in POSIX Shell
 set -o errexit -o nounset -o pipefail
-
 # default values and check for the mandatory args
 : "${IS_CACHE:="false"}"
 : "${IS_DEBUG:="0"}"
 : "${GITHUB_ENV:=""}"
 : "${GITHUB_TOKEN:=""}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_MAP_FILE="${SCRIPT_DIR}/.pkg_map.rc"
 PRECOMMIT_CFG=".pre-commit-config.yaml"
 PRECOMMIT_CFG_CI=".pre-commit-config-ci.yaml"
 CACHE_DIR="${HOME}/.cache"
 CACHE_BIN="${CACHE_DIR}/bin"
-
 # define cache prefixes
 HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 PIP_PREFIX="${CACHE_DIR}/pip"
 NPM_PREFIX="${CACHE_DIR}/npm"
-
 mkdir -p "${HOMEBREW_PREFIX}" "${PIP_PREFIX}" "${NPM_PREFIX}"
-
 # ensure Homebrew installs into ~/.cache/homebrew
 PATH="${HOMEBREW_PREFIX}/bin:${PATH}"
-
 # ensure pip installs into ~/.cache/pip
 PYTHONUSERBASE="${PIP_PREFIX}"
 PATH="${PIP_PREFIX}/bin:${PATH}"
 PYTHONPATH="${PIP_PREFIX}/lib/python$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')/site-packages:${PYTHONPATH:-}"
-
 # ensure npm installs into ~/.cache/npm
 npm config set prefix "${NPM_PREFIX}"
 PATH="${NPM_PREFIX}/bin:${PATH}"
 NODE_PATH="${NPM_PREFIX}/lib/node_modules:${NODE_PATH:-}"
-
 # golang paths
 GOBIN="${CACHE_DIR}/go/bin"
 PATH="${GOBIN}:${PATH}"
-
 # custom script & curl support
 PATH="${CACHE_BIN}:${PATH}"
 mkdir -p "${CACHE_BIN}"
-
 export HOMEBREW_PREFIX PATH PYTHONUSERBASE PYTHONPATH NODE_PATH GOBIN
-
 #######################################
 # Remove repos from .pre-commit-config.yaml that have `# ci:ignore` inline comments.
 #######################################
@@ -52,83 +45,67 @@ disable_ci_ignored_repos() {
     local cfg="${1}"
     cp -- "${cfg}" "${PRECOMMIT_CFG_CI}"
     echo "[INFO] Copied ${cfg} -> ${PRECOMMIT_CFG_CI}"
-
     # Extract repo URLs marked with '# ci:ignore'
     mapfile -t ignored_repos < <(
         grep -E '^[[:space:]]*-[[:space:]]*repo:' "${PRECOMMIT_CFG_CI}" |
             grep '# ci:ignore' |
             sed -E 's/^[[:space:]]*-[[:space:]]*repo:[[:space:]]*([^[:space:]#]+).*/\1/' || true
     )
-
     if [[ ${#ignored_repos[@]} -eq 0 ]]; then
         echo "[INFO] No repos with ci:ignore found in ${PRECOMMIT_CFG_CI}"
         return 0
     fi
-
     echo "[INFO] Disabling repos with ci:ignore..."
     for repo in "${ignored_repos[@]}"; do
         echo "  - Removing repo: ${repo}"
         yq -i "del(.repos[] | select(.repo == \"${repo}\"))" "${PRECOMMIT_CFG_CI}"
     done
-
     echo "[INFO] Updated ${PRECOMMIT_CFG_CI}"
 }
-
 #######################################
 #
 #######################################
-
+# TODO: required for 'ops-common/pre-commit-autoupdate' in other repos; find a better way to handle it
 git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/indykite/".insteadOf "ssh://git@github.com/indykite/"
-
 # pre-create the directory so npm commands don’t fail
 mkdir -p "${NPM_PREFIX}/lib/node_modules"
-
 # propagate env vars to later workflow steps
 {
     echo "PATH=${PATH}"
     echo "PYTHONPATH=${PYTHONPATH}"
     echo "NODE_PATH=${NODE_PATH}"
 } >>"${GITHUB_ENV}"
-
 #
 echo "alias terraform='tofu'" >>"${HOME}/.bashrc"
 eval "$(brew shellenv || true)" >>"${HOME}/.bashrc"
 # shellcheck source=/dev/null
 source "${HOME}/.bashrc"
-
 # parse and install dependencies automatically
 BREW_INSTALL=$(grep "brew install" .pre-commit-config.yaml |
     awk -F"brew install" '{ print $2 }' |
     xargs -n1 |
     xargs)
-
 echo "[DEBUG] detected dependencies: ${BREW_INSTALL}"
-
 #
 # parse .pkg_map.rc into PKG_MAP
 declare -A PKG_MAP
 declare -A PKG_MANAGERS # dynamic manager → packages map
-
 # normalize map file to unix line endings
 MAP_FILE_CONTENT=$(tr -d '\r' <"${PKG_MAP_FILE}")
-
 while read -r line; do
     # strip inline comments
     line="${line%%#*}"
     # trim whitespace
     line="$(echo -n "${line}" | xargs)"
     [[ -z "${line}" ]] && continue
-
     # split: first word = pkg, rest = target
     pkg="${line%%[[:space:]]*}"
     target="${line#"${pkg}"}"
     target="$(echo -n "${target}" | xargs)" # trim leading/trailing spaces
-
     if [[ -n "${pkg}" && -n "${target}" ]]; then
         PKG_MAP["${pkg}"]="${target}"
     fi
 done <<<"${MAP_FILE_CONTENT}"
-
 #
 for pkg in ${BREW_INSTALL}; do
     target="${PKG_MAP[${pkg}]:-}"
@@ -160,7 +137,6 @@ for pkg in ${BREW_INSTALL}; do
         ;;
     esac
 done
-
 echo -e "\n📦 Summary of detected dependencies per pkg manager / method of installation:"
 for manager in "${!PKG_MANAGERS[@]}"; do
     if [[ "${manager}" == "script" ]]; then
@@ -174,10 +150,8 @@ for manager in "${!PKG_MANAGERS[@]}"; do
     fi
 done
 echo
-
 if [[ ${IS_CACHE} != "true" ]]; then
     echo -e "\nInstalling dependencies..."
-
     for manager in "${!PKG_MANAGERS[@]}"; do
         pkgs="${PKG_MANAGERS[${manager}]}"
         echo "⬇️ Installing via ${manager}: ${pkgs}"
@@ -214,7 +188,6 @@ if [[ ${IS_CACHE} != "true" ]]; then
         esac
     done
 fi
-
 #
 if [[ ${IS_DEBUG} == "1" ]]; then
     echo -e "\nInstalled versions:"
@@ -224,11 +197,9 @@ if [[ ${IS_DEBUG} == "1" ]]; then
     npm list -g -all || true
     go list || true
 fi
-
 #
 disable_ci_ignored_repos "${PRECOMMIT_CFG}"
 time pre-commit install --config "${PRECOMMIT_CFG_CI}" --install-hooks -t pre-commit # don't install 'commit-msg'
-
 #
 if [[ ${IS_CACHE} != "true" ]]; then
     time {
@@ -242,6 +213,5 @@ if [[ ${IS_CACHE} != "true" ]]; then
             "${HOME}/.npm/_logs" "${NPM_PREFIX}/_logs" \
             "${CACHE_DIR}/go-build" # can be caused by 'script' type as well as 'pre-commit --install-hooks'
     }
-
     du -d 1 -h "${CACHE_DIR}"
 fi
