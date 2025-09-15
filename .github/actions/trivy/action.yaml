@@ -1,26 +1,25 @@
 ---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Action and synced from a private repo!
+#
 name: trivy
 description: Runs Trivy vulnerability scanner
-
 inputs:
   github_token:
     description: GitHub token for uploading artifacts
     required: true
-
 runs:
   using: composite
   steps:
     - name: actions/checkout
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 - https://github.com/actions/checkout/releases
-
     - name: setup/oras
       uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4 - https://github.com/oras-project/setup-oras/releases
-
     - name: get date
       id: date
       shell: bash
       run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
-
     - name: actions/cache
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4 - https://github.com/actions/cache/releases
       id: cache
@@ -28,7 +27,6 @@ runs:
         # lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
-
     - name: trivy-db
       if: (!steps.cache.outputs.cache-hit)
       shell: bash
@@ -37,7 +35,6 @@ runs:
         oras pull ghcr.io/aquasecurity/trivy-db:2
         tar -xzf db.tar.gz -C "$GITHUB_WORKSPACE/.cache/trivy/db"
         rm db.tar.gz
-
     # - name: Download and extract the Java DB
     #   if: (!steps.cache.outputs.cache-hit)
     #   shell: bash
@@ -46,41 +43,20 @@ runs:
     #     oras pull ghcr.io/aquasecurity/trivy-java-db:1
     #     tar -xzf javadb.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/java-db
     #     rm javadb.tar.gz
-
     - name: actions/cache/save
       uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
-
     - name: trivy
       uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1 - https://github.com/aquasecurity/trivy-action/releases
       with:
         scan-type: 'fs'
         scan-ref: '.'
         trivy-config: .trivy.yaml
-        # format: 'sarif' # XXX: see comment below for Code Security
+        # format: 'sarif' - https://github.com/aquasecurity/trivy-action?tab=readme-ov-file#using-trivy-with-github-code-scanning
         # output: 'trivy-results.sarif'
         format: 'github'
         output: 'dependency-results.sbom.json'
         github-pat: ${{ inputs.github_token }}
-
-# "Code Security must be enabled for this repository to use code scanning" - part of GitHub Advanced Security license billing
-# - name: Upload Trivy scan results to GitHub Security tab
-#   uses: github/codeql-action/upload-sarif@v3
-#   if: always()
-#   with:
-#     sarif_file: 'trivy-results.sarif'
-
-# shall be done against 'master' only:
-# "The snapshot was accepted, but it is not for the default branch. It will not update dependency results for the repository"
-# - name: Run Trivy in GitHub SBOM mode and submit results to Dependency Graph
-#   uses: aquasecurity/trivy-action@0.33.0
-#   with:
-#     scan-type: 'fs'
-#     scan-ref: '.'
-#     trivy-config: .trivy.yaml
-#     format: 'github'
-#     output: 'dependency-results.sbom.json'
-#     github-pat: ${{ inputs.github_token }}

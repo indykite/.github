@@ -1,4 +1,8 @@
 #
+# DO NOT EDIT!!!
+# Managed by GitHub Action and synced from a private repo!
+#
+#
 # list of pre-installed packages: https://github.com/actions/runner-images/releases?q=ubuntu&expanded=true
 # if not listed below, then 'brew' will be used!!
 #
@@ -17,5 +21,6 @@ checkov     pip://checkov
 # shfmt           go://mvdan.cc/sh/v3/cmd/shfmt@latest
 # yamlfmt         go://github.com/google/yamlfmt/cmd/yamlfmt@latest
 # terraform-docs  go://github.com/terraform-docs/terraform-docs@latest
+tfplugindocs    go://github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
 #
 actionlint script://bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest
