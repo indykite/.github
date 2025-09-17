@@ -7,6 +7,8 @@
 # if not listed below, then 'brew' will be used!!
 #
 go          pre-installed # via 'actions/setup-go'
+node        pre-installed # via 'actions/setup-node'
+npm         pre-installed # via 'actions/setup-node'
 shellcheck  pre-installed
 yamllint    pre-installed
 #

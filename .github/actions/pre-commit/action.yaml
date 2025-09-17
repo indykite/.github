@@ -46,14 +46,18 @@ runs:
       if: inputs.checkout_fetch_master == '1'
       shell: bash
       run: git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-    - name: Checking commit ${{ env.GITHUB_SHA }}
+    - name: setup/env
       id: action-prep
       shell: bash
       run: |
-        echo "Checking commit $GITHUB_SHA"
-        echo "IS_TERRAFORM=$(grep -c terraform .pre-commit-config.yaml)" >> "$GITHUB_OUTPUT"
-        echo "IS_GOLANG=$(grep -cE "(brew install.* go |golang)" .pre-commit-config.yaml)" >> "$GITHUB_OUTPUT"
-        echo "CACHE_MONTH=$(date +'%Y%m')" >> "$GITHUB_OUTPUT"
+        _CONFIG=".pre-commit-config.yaml"
+        set -x
+        {
+          echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
+          echo "IS_GOLANG=$(grep -E "(go|golang)" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")"
+          echo "IS_NPM=$(grep -E "(npm|node)" "$_CONFIG" | grep -cv "language: node")"
+          echo "CACHE_MONTH=$(date +'%Y%m')"
+        } >>"$GITHUB_OUTPUT"
     - name: actions/cache/restore
       uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4 - https://github.com/actions/cache/releases
       id: cache
@@ -88,6 +92,15 @@ runs:
       if: >-
         steps.action-prep.outputs.IS_GOLANG > 0
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
+    - name: setup/node
+      uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0 - https://github.com/actions/setup-node/releases
+      with:
+        node-version: latest
+        node-version-file: 'package.json'
+        cache: 'npm'
+      if: >-
+        steps.action-prep.outputs.IS_NPM > 0
+        && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
     #
     # prepare env
     - name: setup/pre-commit
@@ -97,6 +110,7 @@ runs:
       env:
         IS_CACHE: ${{ steps.cache.outputs.cache-hit }}
         IS_DEBUG: ${{ runner.debug }} # set only if debug logging is enabled, and always has the value of 1
+        IS_NPM: ${{ steps.action-prep.outputs.IS_NPM }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         TG_PROVIDER_CACHE: 1
         TG_PROVIDER_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}

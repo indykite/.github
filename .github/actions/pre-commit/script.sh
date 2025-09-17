@@ -8,6 +8,7 @@ set -o errexit -o nounset -o pipefail
 # default values and check for the mandatory args
 : "${IS_CACHE:="false"}"
 : "${IS_DEBUG:="0"}"
+: "${IS_NPM:="0"}"
 : "${GITHUB_ENV:=""}"
 : "${GITHUB_TOKEN:=""}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +21,7 @@ CACHE_BIN="${CACHE_DIR}/bin"
 HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 PIP_PREFIX="${CACHE_DIR}/pip"
 NPM_PREFIX="${CACHE_DIR}/npm"
+NPM_CACHE="${HOME}/.npm"
 mkdir -p "${HOMEBREW_PREFIX}" "${PIP_PREFIX}" "${NPM_PREFIX}"
 # ensure Homebrew installs into ~/.cache/homebrew
 PATH="${HOMEBREW_PREFIX}/bin:${PATH}"
@@ -29,6 +31,7 @@ PATH="${PIP_PREFIX}/bin:${PATH}"
 PYTHONPATH="${PIP_PREFIX}/lib/python$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')/site-packages:${PYTHONPATH:-}"
 # ensure npm installs into ~/.cache/npm
 npm config set prefix "${NPM_PREFIX}"
+npm set cache "${NPM_CACHE}"
 PATH="${NPM_PREFIX}/bin:${PATH}"
 NODE_PATH="${NPM_PREFIX}/lib/node_modules:${NODE_PATH:-}"
 # golang paths
@@ -149,6 +152,10 @@ for manager in "${!PKG_MANAGERS[@]}"; do
     fi
 done
 echo
+# installed into './node_modules/' and not cached
+if [[ ${IS_NPM} -gt 0 ]]; then
+    npm ci --no-fund --cache "${NPM_CACHE}" --prefer-offline
+fi
 if [[ ${IS_CACHE} != "true" ]]; then
     echo -e "\nInstalling dependencies..."
     for manager in "${!PKG_MANAGERS[@]}"; do
