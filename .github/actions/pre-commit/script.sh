@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # DO NOT EDIT!!!
-# Managed by GitHub Action and synced from a private repo!
+# Managed by GitHub Actions
 #
 # pipefail - BASH only, not supported in POSIX Shell
 set -o errexit -o nounset -o pipefail
@@ -91,7 +91,7 @@ echo "[DEBUG] detected dependencies: ${BREW_INSTALL}"
 #
 # parse .pkg_map.rc into PKG_MAP
 declare -A PKG_MAP
-declare -A PKG_MANAGERS # dynamic manager → packages map
+declare -A PKG_MANAGERS # dynamic manager -> packages map
 # normalize map file to unix line endings
 MAP_FILE_CONTENT=$(tr -d '\r' <"${PKG_MAP_FILE}")
 while read -r line; do
@@ -172,7 +172,7 @@ if [[ ${IS_CACHE} != "true" ]]; then
             ;;
         npm)
             # shellcheck disable=SC2086
-            time npm install -g ${pkgs}
+            time npm install -g --no-fund ${pkgs}
             ;;
         go)
             # shellcheck disable=SC2086

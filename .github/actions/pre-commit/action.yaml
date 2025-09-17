@@ -1,7 +1,7 @@
 ---
 #
 # DO NOT EDIT!!!
-# Managed by GitHub Action and synced from a private repo!
+# Managed by GitHub Actions
 #
 name: pre-commit
 description: re-usable 'pre-commit' Github Action for formatting and linting
@@ -54,7 +54,7 @@ runs:
         set -x
         {
           echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
-          echo "IS_GOLANG=$(grep -E "(go|golang)" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")"
+          echo "IS_GOLANG=$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")"
           echo "IS_NPM=$(grep -E "(npm|node)" "$_CONFIG" | grep -cv "language: node")"
           echo "CACHE_MONTH=$(date +'%Y%m')"
         } >>"$GITHUB_OUTPUT"

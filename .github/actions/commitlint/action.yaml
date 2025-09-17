@@ -1,7 +1,7 @@
 ---
 #
 # DO NOT EDIT!!!
-# Managed by GitHub Action and synced from a private repo!
+# Managed by GitHub Actions
 #
 name: commitlint
 description: Lint commit messages

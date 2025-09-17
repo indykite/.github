@@ -1,6 +1,6 @@
 //
 // DO NOT EDIT!!!
-// Managed by GitHub Action and synced from a private repo!
+// Managed by GitHub Actions
 //
 const actor = process.env.GITHUB_ACTOR || "";
 const releaseBotName = process.env.RELEASE_BOT || "";
