@@ -4,7 +4,7 @@
 //
 const actor = process.env.GITHUB_ACTOR || "";
 const releaseBotName = process.env.RELEASE_BOT || "";
-async function isBotCommit(message) {
+function isBotCommit(message) {
   return (
     message.includes("Signed-off-by: dependabot[bot]") ||
     (message.startsWith("ci(sync): update GitHub Actions") && actor === "renovate[bot]") ||
