@@ -115,6 +115,7 @@ runs:
       env:
         IS_CACHE: ${{ steps.cache.outputs.cache-hit }}
         IS_DEBUG: ${{ runner.debug }} # set only if debug logging is enabled, and always has the value of 1
+        IS_GOLANG: ${{ steps.action-prep.outputs.IS_GOLANG }}
         IS_NPM: ${{ steps.action-prep.outputs.IS_NPM }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         TG_PROVIDER_CACHE: 1
