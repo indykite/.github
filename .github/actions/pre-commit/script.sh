@@ -8,6 +8,7 @@ set -o errexit -o nounset -o pipefail
 # default values and check for the mandatory args
 : "${IS_CACHE:="false"}"
 : "${IS_DEBUG:="0"}"
+: "${IS_GOLANG:="0"}"
 : "${IS_NPM:="0"}"
 : "${GITHUB_ENV:=""}"
 : "${GITHUB_TOKEN:=""}"
@@ -193,6 +194,11 @@ if [[ ${IS_CACHE} != "true" ]]; then
             ;;
         esac
     done
+    # Golang
+    if [[ ${IS_GOLANG} -gt 0 ]]; then
+        echo "Golang, download modules to local cache"
+        go mod download
+    fi
 fi
 #
 if [[ ${IS_DEBUG} == "1" ]]; then
