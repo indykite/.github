@@ -60,3 +60,7 @@ runs:
         format: 'github'
         output: 'dependency-results.sbom.json'
         github-pat: ${{ inputs.github_token }}
+    - name: trivy-output
+      if: always()
+      shell: bash
+      run: cat dependency-results.sbom.json
