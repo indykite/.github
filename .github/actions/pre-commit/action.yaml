@@ -82,7 +82,7 @@ runs:
       if: (github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request'
       with:
         # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
-        python-version: "3.13"
+        python-version: "3.14"
     - name: setup/opentofu
       uses: opentofu/setup-opentofu@000eeb8522f0572907c393e8151076c205fdba1b # v1.0.6 - https://github.com/opentofu/setup-opentofu/releases
       if: >-
