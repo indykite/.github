@@ -98,7 +98,7 @@ runs:
         && steps.action-prep.outputs.gomod_path != ''
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
     - name: setup/node
-      uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0 - https://github.com/actions/setup-node/releases
+      uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0 - https://github.com/actions/setup-node/releases
       with:
         node-version: latest
         node-version-file: 'package.json'
