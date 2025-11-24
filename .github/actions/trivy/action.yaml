@@ -13,7 +13,7 @@ runs:
   using: composite
   steps:
     - name: actions/checkout
-      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 - https://github.com/actions/checkout/releases
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 - https://github.com/actions/checkout/releases
     - name: setup/oras
       uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4 - https://github.com/oras-project/setup-oras/releases
     - name: get date
