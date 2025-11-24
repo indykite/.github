@@ -38,7 +38,7 @@ runs:
       shell: bash
       run: echo "fetch-depth=$(expr ${{ github.event.pull_request.commits }} + 1)" >> "$GITHUB_OUTPUT"
     - name: actions/checkout
-      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 - https://github.com/actions/checkout/releases
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 - https://github.com/actions/checkout/releases
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }} # all commits for the given PR +1 more
@@ -89,7 +89,7 @@ runs:
         steps.action-prep.outputs.IS_TERRAFORM > 0
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
     - name: setup/golang
-      uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0 - https://github.com/actions/setup-go/releases
+      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0 - https://github.com/actions/setup-go/releases
       with:
         go-version-file: ${{ steps.action-prep.outputs.gomod_path }}
         cache-dependency-path: "**/go.sum"
