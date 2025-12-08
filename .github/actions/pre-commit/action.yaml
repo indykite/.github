@@ -38,7 +38,7 @@ runs:
       shell: bash
       run: echo "fetch-depth=$(expr ${{ github.event.pull_request.commits }} + 1)" >> "$GITHUB_OUTPUT"
     - name: actions/checkout
-      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 - https://github.com/actions/checkout/releases
+      uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0 - https://github.com/actions/checkout/releases
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }} # all commits for the given PR +1 more
@@ -98,7 +98,7 @@ runs:
         && steps.action-prep.outputs.gomod_path != ''
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
     - name: setup/node
-      uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0 - https://github.com/actions/setup-node/releases
+      uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0 - https://github.com/actions/setup-node/releases
       with:
         node-version: latest
         node-version-file: 'package.json'
