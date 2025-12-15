@@ -43,7 +43,7 @@ repos:
   #
   # Renovate
   - repo: https://github.com/renovatebot/pre-commit-hooks # ci:ignore:OK to validate locally only, otherwise it adds 850MB+ to unpacked cache
-    rev: "42.29.2"
+    rev: "42.54.3"
     hooks:
       - id: renovate-config-validator
         args: [--strict]
@@ -51,7 +51,7 @@ repos:
   #
   # Commit Message linting
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook # ci:ignore:executed under a separate GitHub action
-    rev: v9.22.0
+    rev: v9.23.0
     hooks:
       # NON-DEFAULT stage, install explicitly with: pre-commit install -t commit-msg
       - id: commitlint
@@ -111,7 +111,7 @@ repos:
   #
   # Detect hardcoded secrets
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.28.0
+    rev: v8.30.0
     hooks:
       - id: gitleaks
         name: gitleaks
