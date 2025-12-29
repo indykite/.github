@@ -62,7 +62,7 @@ runs:
           echo "CACHE_MONTH=$(date +'%Y%m')"
         } >>"$GITHUB_OUTPUT"
     - name: actions/cache/restore
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0 - https://github.com/actions/cache/releases
+      uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1 - https://github.com/actions/cache/releases
       id: cache
       with:
         lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
@@ -84,7 +84,7 @@ runs:
         # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
         python-version: "3.14"
     - name: setup/opentofu
-      uses: opentofu/setup-opentofu@000eeb8522f0572907c393e8151076c205fdba1b # v1.0.6 - https://github.com/opentofu/setup-opentofu/releases
+      uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7 - https://github.com/opentofu/setup-opentofu/releases
       if: >-
         steps.action-prep.outputs.IS_TERRAFORM > 0
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
@@ -127,7 +127,7 @@ runs:
         timeout ${{ inputs.action_timeout }}m $GITHUB_ACTION_PATH/script.sh
     # save early, so if pre-commit fails, the cache with prerequisites is available
     - name: actions/cache/save
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0 - https://github.com/actions/cache/releases
+      uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: |
