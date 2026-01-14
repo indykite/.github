@@ -49,9 +49,17 @@ runs:
       with:
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
-    - name: trivy
+    - name: trivy # results in table format
       uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1 - https://github.com/aquasecurity/trivy-action/releases
       with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        trivy-config: .trivy.yaml
+    # XXX: no option to do multiple formats in one scan, so doing separate runs
+    - name: trivy/sbom # JSON SBOM format with uploading to GitHub Artifacts
+      uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1 - https://github.com/aquasecurity/trivy-action/releases
+      with:
+        skip-setup-trivy: true
         scan-type: 'fs'
         scan-ref: '.'
         trivy-config: .trivy.yaml
@@ -60,7 +68,3 @@ runs:
         format: 'github'
         output: 'dependency-results.sbom.json'
         github-pat: ${{ inputs.github_token }}
-    - name: trivy-output
-      if: always()
-      shell: bash
-      run: cat dependency-results.sbom.json
