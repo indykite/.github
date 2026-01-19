@@ -62,7 +62,7 @@ runs:
           echo "CACHE_MONTH=$(date +'%Y%m')"
         } >>"$GITHUB_OUTPUT"
     - name: actions/cache/restore
-      uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1 - https://github.com/actions/cache/releases
+      uses: actions/cache/restore@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2 - https://github.com/actions/cache/releases
       id: cache
       with:
         lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
@@ -84,12 +84,12 @@ runs:
         # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
         python-version: "3.14"
     - name: setup/opentofu
-      uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7 - https://github.com/opentofu/setup-opentofu/releases
+      uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1.0.8 - https://github.com/opentofu/setup-opentofu/releases
       if: >-
         steps.action-prep.outputs.IS_TERRAFORM > 0
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
     - name: setup/golang
-      uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0 - https://github.com/actions/setup-go/releases
+      uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0 - https://github.com/actions/setup-go/releases
       with:
         go-version-file: ${{ steps.action-prep.outputs.gomod_path }}
         cache-dependency-path: "**/go.sum"
@@ -98,7 +98,7 @@ runs:
         && steps.action-prep.outputs.gomod_path != ''
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
     - name: setup/node
-      uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0 - https://github.com/actions/setup-node/releases
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0 - https://github.com/actions/setup-node/releases
       with:
         node-version: latest
         node-version-file: 'package.json'
@@ -127,7 +127,7 @@ runs:
         timeout ${{ inputs.action_timeout }}m $GITHUB_ACTION_PATH/script.sh
     # save early, so if pre-commit fails, the cache with prerequisites is available
     - name: actions/cache/save
-      uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1 - https://github.com/actions/cache/releases
+      uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: |
