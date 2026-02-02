@@ -38,7 +38,7 @@ runs:
       shell: bash
       run: echo "fetch-depth=$(expr ${{ github.event.pull_request.commits }} + 1)" >> "$GITHUB_OUTPUT"
     - name: actions/checkout
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1 - https://github.com/actions/checkout/releases
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }} # all commits for the given PR +1 more
@@ -62,7 +62,7 @@ runs:
           echo "CACHE_MONTH=$(date +'%Y%m')"
         } >>"$GITHUB_OUTPUT"
     - name: actions/cache/restore
-      uses: actions/cache/restore@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2 - https://github.com/actions/cache/releases
+      uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3 - https://github.com/actions/cache/releases
       id: cache
       with:
         lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
@@ -78,7 +78,7 @@ runs:
           }}-state-${{ steps.action-prep.outputs.CACHE_MONTH }}
     # setup prerequisites
     - name: setup/python3
-      uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0 - https://github.com/actions/setup-python/releases
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0 - https://github.com/actions/setup-python/releases
       if: (github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request'
       with:
         # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
@@ -127,7 +127,7 @@ runs:
         timeout ${{ inputs.action_timeout }}m $GITHUB_ACTION_PATH/script.sh
     # save early, so if pre-commit fails, the cache with prerequisites is available
     - name: actions/cache/save
-      uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2 - https://github.com/actions/cache/releases
+      uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: |

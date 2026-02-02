@@ -13,7 +13,7 @@ runs:
   using: composite
   steps:
     - name: actions/checkout
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1 - https://github.com/actions/checkout/releases
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
     - name: setup/oras
       uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4 - https://github.com/oras-project/setup-oras/releases
     - name: get date
@@ -21,7 +21,7 @@ runs:
       shell: bash
       run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
     - name: actions/cache
-      uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2 - https://github.com/actions/cache/releases
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3 - https://github.com/actions/cache/releases
       id: cache
       with:
         # lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
@@ -44,7 +44,7 @@ runs:
     #     tar -xzf javadb.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/java-db
     #     rm javadb.tar.gz
     - name: actions/cache/save
-      uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2 - https://github.com/actions/cache/releases
+      uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: ${{ github.workspace }}/.cache/trivy
