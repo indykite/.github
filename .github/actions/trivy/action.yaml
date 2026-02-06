@@ -52,6 +52,7 @@ runs:
     - name: trivy # results in table format
       uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1 - https://github.com/aquasecurity/trivy-action/releases
       with:
+        version: 'v0.69.1'
         scan-type: 'fs'
         scan-ref: '.'
         trivy-config: .trivy.yaml
