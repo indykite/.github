@@ -24,6 +24,7 @@ PIP_PREFIX="${CACHE_DIR}/pip"
 NPM_PREFIX="${CACHE_DIR}/npm"
 NPM_CACHE="${HOME}/.npm"
 mkdir -p "${HOMEBREW_PREFIX}" "${PIP_PREFIX}" "${NPM_PREFIX}"
+[[ -n "${TF_PLUGIN_CACHE_DIR:-}" ]] && mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 # ensure Homebrew installs into ~/.cache/homebrew
 PATH="${HOMEBREW_PREFIX}/bin:${PATH}"
 # ensure pip installs into ~/.cache/pip
