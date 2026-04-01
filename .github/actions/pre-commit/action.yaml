@@ -56,7 +56,7 @@ runs:
         set -x
         {
           echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
-          echo "IS_GOLANG=$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")"
+          echo "IS_GOLANG=${IS_GOLANG:-$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")}"
           echo "IS_NPM=$(grep -E "(npm|node)" "$_CONFIG" | grep -cv "language: node")"
           echo "gomod_path=$FILE"
           echo "CACHE_MONTH=$(date +'%Y%m')"
