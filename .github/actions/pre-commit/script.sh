@@ -199,7 +199,11 @@ if [[ ${IS_CACHE} != "true" ]]; then
     if [[ ${IS_GOLANG} -gt 0 ]]; then
         echo "Golang, download modules to local cache"
         go mod download
+    else
+        echo "Golang, no need to download modules: IS_GOLANG=${IS_GOLANG}"
     fi
+else
+    echo -e "\nSkipping dependency installation, using cache... IS_CACHE=${IS_CACHE}"
 fi
 #
 if [[ ${IS_DEBUG} == "1" ]]; then
@@ -220,7 +224,7 @@ if [[ ${IS_CACHE} != "true" ]]; then
         brew cleanup
         pip cache purge || true
         npm cache clean --force || true
-        go clean -cache -modcache -testcache || true
+        go clean -cache -testcache || true
         rm -rf "$(brew --cache || true)" \
             "${PIP_PREFIX}/http" "${PIP_PREFIX}/http-v2" "${PIP_PREFIX}/selfcheck" "${PIP_PREFIX}/wheels" "${PIP_PREFIX}/packages" \
             "${HOME}/.npm/_logs" "${NPM_PREFIX}/_logs" \
