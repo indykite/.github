@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: commitlint
         # uses: ./.github/actions/commitlint/action.yaml <-- requires code checkout before
-        uses: indykite/.github/.github/actions/commitlint@800555cc2fd3b369186640b3663618b485736f3c # master
+        uses: indykite/.github/.github/actions/commitlint@aae12f1cdaecf73333c904179a3995918b198f06 # master
         with:
           is_strict: "true"
           release_bot: "${{ vars.RELEASE_BOT }}"
@@ -40,7 +40,7 @@ jobs:
     steps:
       - name: pre-commit
         # uses: ./.github/actions/pre-commit/action.yaml
-        uses: indykite/.github/.github/actions/pre-commit@800555cc2fd3b369186640b3663618b485736f3c # master
+        uses: indykite/.github/.github/actions/pre-commit@aae12f1cdaecf73333c904179a3995918b198f06 # master
         with:
           # shared workflow; required to do ssh://git@github.com... from another repos
           github_token: ${{ secrets.INDYKITEONE_PAT }}
@@ -57,6 +57,6 @@ jobs:
     steps:
       - name: trivy
         # uses: ./.github/actions/pre-commit/action.yaml
-        uses: indykite/.github/.github/actions/trivy@800555cc2fd3b369186640b3663618b485736f3c # master
+        uses: indykite/.github/.github/actions/trivy@aae12f1cdaecf73333c904179a3995918b198f06 # master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
