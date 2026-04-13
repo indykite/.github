@@ -62,7 +62,7 @@ runs:
           echo "CACHE_MONTH=$(date +'%Y%m')"
         } >>"$GITHUB_OUTPUT"
     - name: actions/cache/restore
-      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4 - https://github.com/actions/cache/releases
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
       with:
         lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
@@ -127,7 +127,7 @@ runs:
         timeout ${{ inputs.action_timeout }}m $GITHUB_ACTION_PATH/script.sh
     # save early, so if pre-commit fails, the cache with prerequisites is available
     - name: actions/cache/save
-      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4 - https://github.com/actions/cache/releases
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: |
