@@ -21,7 +21,7 @@ runs:
       shell: bash
       run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
     - name: actions/cache
-      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4 - https://github.com/actions/cache/releases
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
       with:
         # lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
@@ -44,7 +44,7 @@ runs:
     #     tar -xzf javadb.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/java-db
     #     rm javadb.tar.gz
     - name: actions/cache/save
-      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4 - https://github.com/actions/cache/releases
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: ${{ github.workspace }}/.cache/trivy
