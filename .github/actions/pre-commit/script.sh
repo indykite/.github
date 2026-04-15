@@ -216,7 +216,7 @@ if [[ ${IS_DEBUG} == "1" ]]; then
 fi
 #
 disable_ci_ignored_repos "${PRECOMMIT_CFG}"
-time pre-commit install --config "${PRECOMMIT_CFG_CI}" --install-hooks -t pre-commit # don't install 'commit-msg'
+time python -m pre_commit install --config "${PRECOMMIT_CFG_CI}" --install-hooks -t pre-commit # don't install 'commit-msg'
 #
 if [[ ${IS_CACHE} != "true" ]]; then
     time {
