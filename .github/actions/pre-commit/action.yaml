@@ -158,4 +158,4 @@ runs:
             PRE_COMMIT_ARGS+=("--verbose")
         fi
         # sanitize PRE_COMMIT_SKIP, remove any spaces
-        SKIP="${PRE_COMMIT_SKIP// /}" time pre-commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}"
+        SKIP="${PRE_COMMIT_SKIP// /}" time python -m pre_commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}"
