@@ -61,6 +61,21 @@ runs:
           echo "gomod_path=$FILE"
           echo "CACHE_MONTH=$(date +'%Y%m')"
         } >>"$GITHUB_OUTPUT"
+    # Must run BEFORE cache/restore so the resolved Python patch version can key the cache.
+    # Otherwise a runner-image Python patch bump (e.g. 3.14.3 -> 3.14.4) leaves pre-commit
+    # venvs in ~/.cache/pre-commit with shebangs pointing at a Python binary that no longer
+    # exists in /opt/hostedtoolcache, breaking every cached hook.
+    - name: setup/python3
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0 - https://github.com/actions/setup-python/releases
+      with:
+        # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
+        python-version: "3.14"
+    - name: setup/python3/version
+      id: pyver
+      shell: bash
+      run: |
+        v=$(python3 -c 'import sys;print(".".join(map(str,sys.version_info[:3])))')
+        echo "v=${v}" >>"$GITHUB_OUTPUT"
     - name: actions/cache/restore
       uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
@@ -74,15 +89,9 @@ runs:
         # expire cache monthly, so CLI tools can be kept updated - "a cache today is immutable and cannot be updated"
         # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
         key: >-
-          key: ${{ runner.os }}-pre-commit-${{ hashFiles('./.pre-commit-config.y*', format('{0}/.pkg_map.rc', github.action_path) )
+          key: ${{ runner.os }}-pre-commit-py${{ steps.pyver.outputs.v }}-${{
+          hashFiles('./.pre-commit-config.y*', format('{0}/.pkg_map.rc', github.action_path) )
           }}-state-${{ steps.action-prep.outputs.CACHE_MONTH }}
-    # setup prerequisites
-    - name: setup/python3
-      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0 - https://github.com/actions/setup-python/releases
-      if: (github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request'
-      with:
-        # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
-        python-version: "3.14"
     - name: setup/opentofu
       uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb # v2.0.0 - https://github.com/opentofu/setup-opentofu/releases
       if: >-
@@ -136,7 +145,8 @@ runs:
           ${{ inputs.trivy_cache_dir }}
           ${{ inputs.tf_plugin_cache_dir }}
         key: >-
-          key: ${{ runner.os }}-pre-commit-${{ hashFiles('./.pre-commit-config.y*', format('{0}/.pkg_map.rc', github.action_path) )
+          key: ${{ runner.os }}-pre-commit-py${{ steps.pyver.outputs.v }}-${{
+          hashFiles('./.pre-commit-config.y*', format('{0}/.pkg_map.rc', github.action_path) )
           }}-state-${{ steps.action-prep.outputs.CACHE_MONTH }}
     #
     # execute pre-commit checks
