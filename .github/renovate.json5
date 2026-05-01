@@ -1,0 +1,129 @@
+// renovate.json is kept for backwards compatibility, but the main config is in renovate.json5 which supports comments
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    ":enableRenovate",
+    "config:best-practices",
+    "schedule:weekly",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(ci)",
+    ":npm",
+    ":gomod",
+    ":docker",
+    ":enablePreCommit",
+    ":enableVulnerabilityAlerts",
+    ":ignoreModulesAndTests",
+    ":ignoreUnstable",
+    "security:openssf-scorecard"
+  ],
+  "osvVulnerabilityAlerts": true,
+  "semanticCommits": "disabled",
+  "commitMessagePrefix": "chore(deps): ",
+  "commitMessageAction": "update",
+  "lockFileMaintenance": {
+    "commitMessageAction": "lock file maintenance"
+  },
+  "pin": {
+    "commitMessageAction": "pin"
+  },
+  "pinDigest": {
+    "commitMessageAction": "pin"
+  },
+  "labels": [
+    "dependencies",
+    "renovate"
+  ],
+  "dependencyDashboardLabels": [
+    "dependencies",
+    "renovate"
+  ],
+  "dependencyDashboardFooter": "@indykite/ops, here's your overview of Renovate-managed dependencies",
+  "dependencyDashboardOSVVulnerabilitySummary": "all",
+  "major": {
+    "minimumReleaseAge": "14 days"
+  },
+  "ignoreDeps": [],
+  "ignorePaths": [],
+  // "All rules are applied, so this effectively means it's the last matching group that takes effect"
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "*"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "addLabels": [
+        "SemVer Major"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "addLabels": [
+        "SemVer Minor"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "patch",
+        "digest",
+        "bump"
+      ],
+      "addLabels": [
+        "SemVer Patch"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    },
+    {
+      "description": "Do not create pinDigest PRs for shared internal GitHub Actions referenced by master",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "pinDigest"
+      ],
+      "matchPackageNames": [
+        "/^indykite\\/\\.github(?:\\/.*)?$/"
+      ],
+      "matchDepNames": [
+        "/^indykite\\/\\.github(?:\\/\\.github\\/(?:actions|workflows)\\/.*)?$/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Group updates CI config files",
+      "groupName": "ci-configs",
+      "labels": ["ci", "no-deploy"],
+      "addLabels": ["ci", "no-deploy"],
+      "semanticCommits": "enabled",
+      "semanticCommitType": "ci",
+      "matchFileNames": [
+        "**/.github/**",
+        ".pre-commit-config.yaml",
+        ".checkov.yaml",
+        ".deepsource.toml",
+        ".golangci.yml",
+        ".hadolint.yml",
+        ".markdownlint.yaml",
+        ".shellcheckrc",
+        ".tfdocs-config.yaml",
+        ".tflint.hcl",
+        ".trivy*",
+        ".yamlfmt.yml",
+        ".yamllint.yml",
+        "docker/Dockerfile",
+        "chart/**"
+      ]
+    }
+  ]
+}
