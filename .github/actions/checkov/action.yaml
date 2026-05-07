@@ -11,7 +11,7 @@ runs:
     - name: actions/checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
     - name: checkov
-      uses: bridgecrewio/checkov-action@4048c972aae68d0b983a48bb3479aab2d877b898 # v3.2.527 - https://github.com/bridgecrewio/checkov-action/releases
+      uses: bridgecrewio/checkov-action@3203f966a7ccd680cd8f6aaa3c3c5b0b3e9afa32 # v12.3099.0 - https://github.com/bridgecrewio/checkov-action/releases
       with:
         config_file: .checkov.yml
         output_format: cli
