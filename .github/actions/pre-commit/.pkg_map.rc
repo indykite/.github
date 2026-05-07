@@ -13,11 +13,11 @@ shellcheck  pre-installed
 yamllint    pre-installed
 #
 trivy       action # i.e. under separate GitHub Action
+checkov     action # pip://checkov
 #
 markdownlint-cli2   npm://markdownlint-cli2
 #
 pre-commit  pip://pre-commit
-checkov     pip://checkov
 #
 # below commented for reference & example only; those don't have any extra deps via 'brew' and faster/smaller there
 # shfmt           go://mvdan.cc/sh/v3/cmd/shfmt@latest
