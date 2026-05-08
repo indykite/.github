@@ -13,5 +13,4 @@ runs:
     - name: checkov
       uses: bridgecrewio/checkov-action@3203f966a7ccd680cd8f6aaa3c3c5b0b3e9afa32 # v12.3099.0 - https://github.com/bridgecrewio/checkov-action/releases
       with:
-        config_file: .checkov.yml
         output_format: cli
