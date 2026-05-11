@@ -86,8 +86,8 @@ eval "$(brew shellenv || true)" >>"${HOME}/.bashrc"
 source "${HOME}/.bashrc"
 # parse and install dependencies automatically
 BREW_INSTALL=$(grep "brew install" .pre-commit-config.yaml |
-    awk -F"brew install" '{ print $2 }' |
-    xargs -n1 |
+    awk -F"brew install" '{ print $2 " pre-commit" }' |
+    xargs -n1 | sort | uniq |
     xargs)
 echo "[DEBUG] detected dependencies: ${BREW_INSTALL}"
 #
