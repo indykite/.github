@@ -4,6 +4,7 @@
 # Managed by GitHub Actions
 #
 name: SAST Linting
+
 on: # yamllint disable-line rule:truthy
   pull_request:
     branches: ["dev", "develop", "main", "master"]
@@ -12,16 +13,17 @@ on: # yamllint disable-line rule:truthy
   # This cache will then be consumable by both feature branches."
   # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#use-cache-across-feature-branches
   push:
-    branches: ["dev", "develop", "main", "master"] # TODO: not able to use ${{ github.event.repository.default_branch }} directly?
+    branches: ["dev", "develop", "main", "master"]
   schedule:
     # GitHub Actions does not support the non-standard syntax @monthly, @weekly, @daily, etc.
-    - cron: "15 0 1 * *" # daily at 00:15 UTC
+    - cron: "15 0 * * *" # daily at 00:15 UTC
 #
 # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions
 # "all of those that are not specified are set to none."
 permissions:
   contents: write # required for trivy to upload artifacts
   pull-requests: read # required for commitlint
+
 jobs:
   commitlint:
     name: commitlint
@@ -34,6 +36,7 @@ jobs:
         with:
           is_strict: "true"
           release_bot: "${{ vars.RELEASE_BOT }}"
+
   pre-commit:
     name: pre-commit
     runs-on: ubuntu-latest
@@ -51,6 +54,7 @@ jobs:
             commitlint,trivy,trivy-conf,trivy-filesystem,checkov,checkov_diff
             ${{ vars.PRE_COMMIT_SKIP != null && ',' || '' }}${{ vars.PRE_COMMIT_SKIP }}
             ${{ format('{0}', github.event_name != 'pull_request' && ',pre-commit-autoupdate,no-commit-to-branch' || '' ) }}
+
   trivy:
     name: trivy
     runs-on: ubuntu-latest
@@ -60,6 +64,7 @@ jobs:
         uses: indykite/.github/.github/actions/trivy@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
   checkov:
     name: checkov
     runs-on: ubuntu-latest

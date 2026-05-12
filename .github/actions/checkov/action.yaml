@@ -5,12 +5,34 @@
 #
 name: checkov
 description: Runs Checkov IaC security scanner
+
 runs:
   using: composite
   steps:
     - name: actions/checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
+
+    - name: detect checkov config
+      id: checkov_config
+      shell: bash
+      run: |
+        config_path=""
+        if [[ -f ".checkov.yml" ]]; then
+          config_path=".checkov.yml"
+        elif [[ -f ".checkov.yaml" ]]; then
+          config_path=".checkov.yaml"
+        fi
+
+        if [[ -n "${config_path}" ]]; then
+          echo "path=${config_path}" >> "${GITHUB_OUTPUT}"
+          echo "Detected Checkov config file: ${config_path}"
+        else
+          echo "No Checkov config file found (.checkov.ya?ml); Checkov step will be skipped."
+        fi
+
     - name: checkov
+      if: steps.checkov_config.outputs.path
       uses: bridgecrewio/checkov-action@3203f966a7ccd680cd8f6aaa3c3c5b0b3e9afa32 # v12.3099.0 - https://github.com/bridgecrewio/checkov-action/releases
       with:
+        config_file: ${{ steps.checkov_config.outputs.path }}
         output_format: cli
