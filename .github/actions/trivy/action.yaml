@@ -5,21 +5,26 @@
 #
 name: trivy
 description: Runs Trivy vulnerability scanner
+
 inputs:
   github_token:
     description: GitHub token for uploading artifacts
     required: true
+
 runs:
   using: composite
   steps:
     - name: actions/checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
+
     - name: setup/oras
       uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2 - https://github.com/oras-project/setup-oras/releases
+
     - name: get date
       id: date
       shell: bash
       run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+
     - name: actions/cache
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
@@ -27,6 +32,7 @@ runs:
         # lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
+
     - name: trivy-db
       if: (!steps.cache.outputs.cache-hit)
       shell: bash
@@ -35,6 +41,7 @@ runs:
         oras pull ghcr.io/aquasecurity/trivy-db:2
         tar -xzf db.tar.gz -C "$GITHUB_WORKSPACE/.cache/trivy/db"
         rm db.tar.gz
+
     # - name: Download and extract the Java DB
     #   if: (!steps.cache.outputs.cache-hit)
     #   shell: bash
@@ -43,12 +50,14 @@ runs:
     #     oras pull ghcr.io/aquasecurity/trivy-java-db:1
     #     tar -xzf javadb.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/java-db
     #     rm javadb.tar.gz
+
     - name: actions/cache/save
       uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       if: (!steps.cache.outputs.cache-hit)
       with:
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
+
     - name: trivy # results in table format
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 - https://github.com/aquasecurity/trivy-action/releases
       with:
@@ -56,6 +65,7 @@ runs:
         scan-type: 'fs'
         scan-ref: '.'
         trivy-config: .trivy.yaml
+
     # XXX: no option to do multiple formats in one scan, so doing separate runs
     - name: trivy/sbom # JSON SBOM format with uploading to GitHub Artifacts
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 - https://github.com/aquasecurity/trivy-action/releases
