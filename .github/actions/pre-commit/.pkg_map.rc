@@ -24,5 +24,6 @@ pre-commit  pip://pre-commit
 # yamlfmt         go://github.com/google/yamlfmt/cmd/yamlfmt@latest
 # terraform-docs  go://github.com/terraform-docs/terraform-docs@latest
 tfplugindocs    go://github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
+tflint          go://github.com/terraform-linters/tflint@latest # brew formula was dropped 2026-05, install from source
 #
 actionlint script://bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest
