@@ -21,6 +21,11 @@ PRECOMMIT_CFG_CI=".pre-commit-config-ci.yaml"
 CACHE_DIR="${HOME}/.cache"
 CACHE_BIN="${CACHE_DIR}/bin"
 
+if [[ ! -f "${PRECOMMIT_CFG}" ]]; then
+    echo "[INFO] ${PRECOMMIT_CFG} not found, skipping pre-commit setup."
+    exit 0
+fi
+
 # define cache prefixes
 HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 PIP_PREFIX="${CACHE_DIR}/pip"
