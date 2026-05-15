@@ -61,13 +61,19 @@ runs:
         FILE=$(find . -name go.mod | head -n 1)
 
         set -x
-        {
-          echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
-          echo "IS_GOLANG=${IS_GOLANG:-$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")}"
-          echo "IS_NPM=$(grep -E "(npm|node)" "$_CONFIG" | grep -cv "language: node")"
-          echo "gomod_path=$FILE"
-          echo "CACHE_MONTH=$(date +'%Y%m')"
-        } >>"$GITHUB_OUTPUT"
+        if [[ ! -f "${_CONFIG}" ]]; then
+          echo "[INFO] ${_CONFIG} not found, skipping pre-commit action setup."
+            echo "PRE_COMMIT_RUN=0" >>"$GITHUB_OUTPUT"
+        else
+          {
+            echo "PRE_COMMIT_RUN=1"
+            echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
+            echo "IS_GOLANG=${IS_GOLANG:-$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")}"
+            echo "IS_NPM=$(grep -E "(npm|node)" "$_CONFIG" | grep -cv "language: node")"
+            echo "gomod_path=$FILE"
+            echo "CACHE_MONTH=$(date +'%Y%m')"
+          } >>"$GITHUB_OUTPUT"
+        fi
 
     # Must run BEFORE cache/restore so the resolved Python patch version can key the cache.
     # Otherwise a runner-image Python patch bump (e.g. 3.14.3 -> 3.14.4) leaves pre-commit
@@ -75,6 +81,7 @@ runs:
     # exists in /opt/hostedtoolcache, breaking every cached hook.
     - name: setup/python3
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0 - https://github.com/actions/setup-python/releases
+      if: steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
       with:
         # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
         python-version: "3.14"
@@ -82,6 +89,7 @@ runs:
     - name: setup/python3/version
       id: pyver
       shell: bash
+      if: steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
       run: |
         v=$(python3 -c 'import sys;print(".".join(map(str,sys.version_info[:3])))')
         echo "v=${v}" >>"$GITHUB_OUTPUT"
@@ -89,6 +97,7 @@ runs:
     - name: actions/cache/restore
       uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
+      if: steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
       with:
         lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
         path: |
@@ -106,7 +115,8 @@ runs:
     - name: setup/opentofu
       uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb # v2.0.0 - https://github.com/opentofu/setup-opentofu/releases
       if: >-
-        steps.action-prep.outputs.IS_TERRAFORM > 0
+        steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
+        && steps.action-prep.outputs.IS_TERRAFORM > 0
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
 
     - name: setup/golang
@@ -115,7 +125,8 @@ runs:
         go-version-file: ${{ steps.action-prep.outputs.gomod_path }}
         cache-dependency-path: "**/go.sum"
       if: >-
-        steps.action-prep.outputs.IS_GOLANG > 0
+        steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
+        && steps.action-prep.outputs.IS_GOLANG > 0
         && steps.action-prep.outputs.gomod_path != ''
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
 
@@ -123,17 +134,20 @@ runs:
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 - https://github.com/actions/setup-node/releases
       with:
         node-version: latest
-        node-version-file: 'package.json'
-        cache: 'npm'
+        node-version-file: "package.json"
+        cache: "npm"
       if: >-
-        steps.action-prep.outputs.IS_NPM > 0
+        steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
+        && steps.action-prep.outputs.IS_NPM > 0
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
 
     #
     # prepare env
     - name: setup/pre-commit
       # if cache is present, no need to re-run on 'master'
-      if: (github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request'
+      if: >-
+        steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
+        && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
       shell: bash
       env:
         IS_CACHE: ${{ steps.cache.outputs.cache-hit }}
@@ -152,7 +166,7 @@ runs:
     # save early, so if pre-commit fails, the cache with prerequisites is available
     - name: actions/cache/save
       uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
-      if: (!steps.cache.outputs.cache-hit)
+      if: steps.action-prep.outputs.PRE_COMMIT_RUN == '1' && (!steps.cache.outputs.cache-hit)
       with:
         path: |
           /home/linuxbrew/.linuxbrew
@@ -168,7 +182,7 @@ runs:
     # execute pre-commit checks
     - name: pre-commit checks
       # run actual checks against PR only
-      if: github.event_name == 'pull_request'
+      if: steps.action-prep.outputs.PRE_COMMIT_RUN == '1' && github.event_name == 'pull_request'
       shell: bash
       env:
         IS_DEBUG: ${{ runner.debug }} # set only if debug logging is enabled, and always has the value of 1
