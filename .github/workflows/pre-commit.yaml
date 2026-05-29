@@ -51,7 +51,7 @@ jobs:
           action_timeout: "${{ vars.PRE_COMMIT_ACTION_TIMEOUT != null && vars.PRE_COMMIT_ACTION_TIMEOUT || 10 }}" # in minutes
           # comma separated list of hook ids; exclude autoupdate and branch checks on scheduled runs for cache purposes
           pre_commit_skip: >-
-            commitlint,trivy,trivy-conf,trivy-filesystem,checkov,checkov_diff
+            commitlint,trivy,trivy-conf,trivy-filesystem,checkov,checkov_diff,terraform_validate
             ${{ vars.PRE_COMMIT_SKIP != null && ',' || '' }}${{ vars.PRE_COMMIT_SKIP }}
             ${{ format('{0}', github.event_name != 'pull_request' && ',pre-commit-autoupdate,no-commit-to-branch' || '' ) }}
 
@@ -71,3 +71,10 @@ jobs:
     steps:
       - name: checkov
         uses: indykite/.github/.github/actions/checkov@master
+
+  terraform-validate:
+    name: terraform-validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: terraform-validate
+        uses: indykite/.github/.github/actions/terraform-validate@master
