@@ -10,10 +10,11 @@ If you believe you have found a security vulnerability, please follow the Respon
 
 Our official communication channel is via email:
 
-- **Email:** responsible-disclosure@indykite.com
+- **Email:** <responsible-disclosure@indykite.com>
 
 When reporting vulnerabilities, please consider:
-1) attack scenario / exploitability, and  
+
+1) attack scenario / exploitability, and
 2) security impact.
 
 Include as much detail as possible (affected service/repo, steps to reproduce, proof-of-concept, and impact).
@@ -27,9 +28,9 @@ Any service on our domains:
 - `*.indykite.id`
 - `*.indykite.one`
 
-…but **not** services hosted by third parties (examples include, but are not limited to: Akamai, Azure, and GCloud).
+...but **not** services hosted by third parties (examples include, but are not limited to: Akamai, Azure, and GCloud).
 
-If you have questions about scope, contact us at **responsible-disclosure@indykite.com**.
+If you have questions about scope, contact us at **<responsible-disclosure@indykite.com>**.
 
 ## Out of scope
 
