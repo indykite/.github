@@ -78,3 +78,6 @@ jobs:
     steps:
       - name: terraform-validate
         uses: indykite/.github/.github/actions/terraform-validate@master
+        with:
+          exclude_dirs: docs,examples
+          github_token: ${{ secrets.INDYKITEONE_PAT }}
