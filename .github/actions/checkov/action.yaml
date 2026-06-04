@@ -10,7 +10,7 @@ runs:
   using: composite
   steps:
     - name: actions/checkout
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 - https://github.com/actions/checkout/releases
 
     - name: detect checkov config
       id: checkov_config
@@ -32,7 +32,7 @@ runs:
 
     - name: checkov
       if: steps.checkov_config.outputs.path
-      uses: bridgecrewio/checkov-action@4048c972aae68d0b983a48bb3479aab2d877b898 # v12.3102.0 - https://github.com/bridgecrewio/checkov-action/releases
+      uses: bridgecrewio/checkov-action@dfb51aed1b783289b0d3f255028e7a88d5e8caa1 # v12.3105.0 - https://github.com/bridgecrewio/checkov-action/releases
       with:
         config_file: ${{ steps.checkov_config.outputs.path }}
         output_format: cli
