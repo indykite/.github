@@ -1,0 +1,102 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+name: terraform-validate
+description: Runs Terraform validate across directories and modules
+
+inputs:
+  tf_plugin_cache_dir:
+    description: Terraform plugin cache dir, shared across all module inits
+    default: "~/.terraform.d/plugin-cache"
+    required: false
+  changed_only:
+    description: Validate only modules containing changed Terraform files
+    default: "false"
+    required: false
+  exclude_dirs:
+    description: Comma-separated directory names/paths to exclude from validation
+    default: ""
+    required: false
+  exclude_file:
+    description: Optional file with exclude entries (one per line, # comments allowed)
+    default: ".terraform-validate-ignore"
+    required: false
+  github_token:
+    description: GitHub token used to rewrite SSH module sources to HTTPS for tofu init
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: actions/checkout
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - https://github.com/actions/checkout/releases
+
+    - name: detect/terraform-validate
+      id: detect
+      shell: bash
+      run: |
+        if find . -type f -name '*.tf' -not -path '*/.terraform/*' -not -path '*/.terragrunt-cache/*' -print -quit | grep -q .; then
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          echo "[INFO] no Terraform files found, skipping."
+        fi
+
+    - name: setup/opentofu
+      if: steps.detect.outputs.enabled == 'true'
+      uses: opentofu/setup-opentofu@847eaa4afeb791b06daa46e8eafa8b1b68d7cfb4 # v2.0.1 - https://github.com/opentofu/setup-opentofu/releases
+
+    - name: resolve/cache-dir
+      if: steps.detect.outputs.enabled == 'true'
+      id: cache-dir
+      shell: bash
+      run: |
+        dir='${{ inputs.tf_plugin_cache_dir }}'
+        if [[ "${dir}" == ~* ]]; then
+          dir="${HOME}${dir:1}"
+        fi
+        mkdir -p "${dir}"
+        echo "path=${dir}" >> "${GITHUB_OUTPUT}"
+
+    - name: get/cache-week
+      if: steps.detect.outputs.enabled == 'true'
+      id: cache-week
+      shell: bash
+      run: |
+        echo "year_week=$(date +'%G%V')" >> "${GITHUB_OUTPUT}"
+
+    # Cache the shared Terraform/OpenTofu provider plugin directory.
+    # Use ISO year+week key for predictable rotation and stable cache restore/save behavior.
+    - name: cache/tf-plugins
+      if: steps.detect.outputs.enabled == 'true'
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
+      id: tf-cache
+      with:
+        path: ${{ steps.cache-dir.outputs.path }}
+        key: cache-tf-plugins-v2-${{ runner.os }}-${{ steps.cache-week.outputs.year_week }}
+
+    - name: terraform-validate
+      id: terraform-validate
+      if: steps.detect.outputs.enabled == 'true'
+      shell: bash
+      env:
+        INPUT_CHANGED_ONLY: ${{ inputs.changed_only }}
+        INPUT_EXCLUDE_DIRS: ${{ inputs.exclude_dirs }}
+        INPUT_EXCLUDE_FILE: ${{ inputs.exclude_file }}
+        TF_PLUGIN_CACHE_DIR: ${{ steps.cache-dir.outputs.path }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        AWS_DEFAULT_REGION: us-east-1 # default region for AWS provider validation paths, in case if needed by providers
+      run: |-
+        bash "${GITHUB_ACTION_PATH}/tf_validate.sh"
+
+    - name: actions/upload-artifact/terraform-validate-log
+      if: always() && steps.detect.outputs.enabled == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 - https://github.com/actions/upload-artifact/releases
+      with:
+        name: terraform-validate-log-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ steps.terraform-validate.outputs.full_log_gz_path }}
+        retention-days: ${{ github.retention_days }}
+        if-no-files-found: error
