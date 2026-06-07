@@ -57,8 +57,10 @@ runs:
     - name: filter/process-terraform-files
       id: filter
       shell: bash
+      env:
+        HAS_TERRAFORM_CHANGES: ${{ steps.filter-paths.outputs.terraform || 'false' }} # fallback to 'false' if the filter output doesn't run
       run: |
-        if [[ ${{ steps.filter-paths.outputs.terraform }} == 'true' ]] || [[ ${{ inputs.changed_only }} != 'true' ]] ; then
+        if [[ "${HAS_TERRAFORM_CHANGES}" == 'true' ]] || [[ ${{ inputs.changed_only }} != 'true' ]] ; then
           echo "enabled=true" >> "${GITHUB_OUTPUT}"
         else
           echo "enabled=false" >> "${GITHUB_OUTPUT}"
