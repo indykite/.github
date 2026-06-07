@@ -32,40 +32,46 @@ runs:
   using: composite
   steps:
     - name: actions/checkout/fetch-depth
+      uses: indykite/.github/.github/actions/git-fetch-depth@master
       id: fetch-depth
-      shell: bash
-      env:
-        PR_COMMITS: ${{ github.event.pull_request.commits }}
-      run: |
-        depth=2
-        if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && -n "${PR_COMMITS}" ]]; then
-          depth=$((PR_COMMITS + 1))
-        fi
-        echo "fetch-depth=${depth}" >> "${GITHUB_OUTPUT}"
 
     - name: actions/checkout
       uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 - https://github.com/actions/checkout/releases
       with:
         fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }} # all commits for the given PR +1 more
 
-    - name: detect/terraform-validate
-      id: detect
+    - name: dorny/paths-filter
+      uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1 - https://github.com/dorny/paths-filter/releases
+      id: filter-paths
+      if: inputs.changed_only == 'true'
+      with:
+        initial-fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }}
+        list-files: shell
+        predicate-quantifier: every
+        filters: |
+          terraform:
+            - '**/*.tf'
+            - '!**/.terraform/**'
+            - '!**/.terragrunt-cache/**'
+
+    - name: filter/process-terraform-files
+      id: filter
       shell: bash
       run: |
-        if find . -type f -name '*.tf' -not -path '*/.terraform/*' -not -path '*/.terragrunt-cache/*' -print -quit | grep -q .; then
+        if [[ ${{ steps.filter-paths.outputs.terraform }} == 'true' ]] || [[ ${{ inputs.changed_only }} != 'true' ]] ; then
           echo "enabled=true" >> "${GITHUB_OUTPUT}"
         else
           echo "enabled=false" >> "${GITHUB_OUTPUT}"
-          echo "[INFO] no Terraform files found, skipping."
+          echo "[INFO] no Terraform files found, skipping..."
         fi
 
     - name: setup/opentofu
-      if: steps.detect.outputs.enabled == 'true'
       uses: opentofu/setup-opentofu@847eaa4afeb791b06daa46e8eafa8b1b68d7cfb4 # v2.0.1 - https://github.com/opentofu/setup-opentofu/releases
+      if: steps.filter.outputs.enabled == 'true'
 
     - name: resolve/cache-dir
-      if: steps.detect.outputs.enabled == 'true'
       id: cache-dir
+      if: steps.filter.outputs.enabled == 'true'
       shell: bash
       run: |
         dir='${{ inputs.tf_plugin_cache_dir }}'
@@ -76,8 +82,8 @@ runs:
         echo "path=${dir}" >> "${GITHUB_OUTPUT}"
 
     - name: get/cache-week
-      if: steps.detect.outputs.enabled == 'true'
       id: cache-week
+      if: steps.filter.outputs.enabled == 'true'
       shell: bash
       run: |
         echo "year_week=$(date +'%G%V')" >> "${GITHUB_OUTPUT}"
@@ -85,19 +91,20 @@ runs:
     # Cache the shared Terraform/OpenTofu provider plugin directory.
     # Use ISO year+week key for predictable rotation and stable cache restore/save behavior.
     - name: cache/tf-plugins
-      if: steps.detect.outputs.enabled == 'true'
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: tf-cache
+      if: steps.filter.outputs.enabled == 'true'
       with:
         path: ${{ steps.cache-dir.outputs.path }}
         key: cache-tf-plugins-v2-${{ runner.os }}-${{ steps.cache-week.outputs.year_week }}
 
     - name: terraform-validate
+      if: steps.filter.outputs.enabled == 'true'
       id: terraform-validate
-      if: steps.detect.outputs.enabled == 'true'
       shell: bash
       env:
         INPUT_CHANGED_ONLY: ${{ inputs.changed_only }}
+        INPUT_CHANGED_FILES: ${{ steps.filter-paths.outputs.terraform_files }}
         INPUT_EXCLUDE_DIRS: ${{ inputs.exclude_dirs }}
         INPUT_EXCLUDE_FILE: ${{ inputs.exclude_file }}
         TF_PLUGIN_CACHE_DIR: ${{ steps.cache-dir.outputs.path }}
@@ -107,8 +114,8 @@ runs:
         bash "${GITHUB_ACTION_PATH}/tf_validate.sh"
 
     - name: actions/upload-artifact/terraform-validate-log
-      if: always() && steps.detect.outputs.enabled == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 - https://github.com/actions/upload-artifact/releases
+      if: always() && steps.filter.outputs.enabled == 'true' && hashFiles(steps.terraform-validate.outputs.full_log_gz_path) != ''
       with:
         name: terraform-validate-log-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ steps.terraform-validate.outputs.full_log_gz_path }}
