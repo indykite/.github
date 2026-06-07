@@ -70,23 +70,13 @@ declare -A seen_dirs=()
 if [[ "${INPUT_CHANGED_ONLY:-false}" == "true" ]]; then
     echo "[INFO] changed-only mode enabled"
 
-    diff_ready=1
-    if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
-        if ! git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
-            diff_ready=0
-        fi
-        diff_cmd=(git diff --name-only HEAD^1 HEAD -- '*.tf')
-    else
-        if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-            diff_ready=0
-        fi
-        diff_cmd=(git diff --name-only HEAD~1 HEAD -- '*.tf')
-    fi
-
-    if [[ ${diff_ready} -eq 1 ]]; then
-        diff_output="$("${diff_cmd[@]}" || true)"
-        while IFS= read -r file; do
+    changed_files_shell="${INPUT_CHANGED_FILES:-}"
+    if [[ -n "${changed_files_shell}" ]]; then
+        # dorny/paths-filter with list-files=shell returns a shell-escaped list.
+        eval "set -- ${changed_files_shell}"
+        for file in "$@"; do
             [[ -z "${file}" ]] && continue
+            [[ "${file}" != *.tf ]] && continue
             [[ "${file}" == *"/.terraform/"* ]] && continue
             [[ "${file}" == *"/.terragrunt-cache/"* ]] && continue
             dir="$(dirname "${file}")"
@@ -94,10 +84,15 @@ if [[ "${INPUT_CHANGED_ONLY:-false}" == "true" ]]; then
                 continue
             fi
             seen_dirs["${dir}"]=1
-        done <<<"${diff_output}"
+        done
     else
-        echo "[WARN] no parent commit available for diff; falling back to full scan"
+        echo "[WARN] changed-only mode requested but changed file list is empty; falling back to full scan"
     fi
+fi
+
+if [[ "${INPUT_CHANGED_ONLY:-false}" == "true" && -n "${INPUT_CHANGED_FILES:-}" && ${#seen_dirs[@]} -eq 0 ]]; then
+    echo "[INFO] no changed Terraform directories found, skipping."
+    exit 0
 fi
 
 if [[ ${#seen_dirs[@]} -eq 0 ]]; then
