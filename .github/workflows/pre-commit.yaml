@@ -79,5 +79,7 @@ jobs:
       - name: terraform-validate
         uses: indykite/.github/.github/actions/terraform-validate@master
         with:
+          # changed files on PR (ruleset CI), full validation on cache-style non-PR runs
+          changed_only: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
           exclude_dirs: docs,examples
           github_token: ${{ secrets.INDYKITEONE_PAT }}
