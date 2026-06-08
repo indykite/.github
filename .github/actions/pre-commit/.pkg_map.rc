@@ -27,5 +27,7 @@ tfplugindocs    go://github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 tflint          go://github.com/terraform-linters/tflint@latest # brew formula was dropped 2026-05, install from source
 #
 actionlint script://bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest
-# istioctl pinned to the cluster's Istio minor; version lives in (renovate-tracked) scripts/download-istioctl.sh
-istioctl   script://bash <(curl -fsSL https://raw.githubusercontent.com/indykite/.github/master/scripts/download-istioctl.sh)
+# istioctl pinned to the cluster's Istio minor; version lives in the renovate-tracked
+# download-istioctl.sh next to this file (.github is private, so fetch it locally via
+# ${SCRIPT_DIR} rather than an unauthenticated raw.githubusercontent.com URL).
+istioctl   script://bash ${SCRIPT_DIR}/download-istioctl.sh
