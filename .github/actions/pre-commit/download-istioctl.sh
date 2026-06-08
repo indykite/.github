@@ -9,7 +9,7 @@
 # so analyzer rules match. The version is renovate-tracked (see .github/renovate.json5).
 set -euo pipefail
 
-ISTIO_VERSION="1.30.0" # renovate: datasource=github-releases depName=istio/istio
+ISTIO_VERSION="1.30.1" # renovate: datasource=github-releases depName=istio/istio
 
 target_dir="${1:-/usr/local/bin}"
 mkdir -p "${target_dir}"
