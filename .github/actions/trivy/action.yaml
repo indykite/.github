@@ -43,17 +43,26 @@ runs:
     - name: setup/oras
       uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2 - https://github.com/oras-project/setup-oras/releases
 
-    - name: get date
-      id: date
+    - name: trivy/init
+      id: init
       shell: bash
-      run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+        if [[ -f ".trivy.yaml" ]]; then
+          echo "has_config=true" >> "$GITHUB_OUTPUT"
+          echo "config_arg=--config .trivy.yaml" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_config=false" >> "$GITHUB_OUTPUT"
+          echo "config_arg=" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Trivy config not found::using default Trivy settings"
+        fi
 
     - name: actions/cache
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
       with:
         path: ${{ github.workspace }}/.cache/trivy
-        key: cache-trivy-${{ steps.date.outputs.date }}
+        key: cache-trivy-${{ steps.init.outputs.date }}
 
     - name: trivy-db
       if: ${{ !steps.cache.outputs.cache-hit || inputs.trivy-db-force-update == '1' }}
@@ -69,7 +78,7 @@ runs:
       if: ${{ !steps.cache.outputs.cache-hit }}
       with:
         path: ${{ github.workspace }}/.cache/trivy
-        key: cache-trivy-${{ steps.date.outputs.date }}
+        key: cache-trivy-${{ steps.init.outputs.date }}
 
     # ---- Single scan → JSON; all output formats are produced via 'trivy convert' below ----
     # https://github.com/aquasecurity/trivy/issues/3243#issuecomment-1853820751
@@ -83,7 +92,7 @@ runs:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-type == 'fs' && '.' || '' }}
         image-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
-        trivy-config: .trivy.yaml
+        trivy-config: ${{ steps.init.outputs.has_config == 'true' && '.trivy.yaml' || '' }}
         format: json
         output: trivy-results.json
 
@@ -91,7 +100,7 @@ runs:
     - name: trivy/table
       shell: bash
       if: always() # run even if the scan step fails, to show results in table format in CI logs
-      run: trivy convert --config .trivy.yaml --format table trivy-results.json
+      run: trivy convert ${{ steps.init.outputs.config_arg }} --format table trivy-results.json
 
     # ---- SARIF + GitHub Security tab upload (default branch only) ----
     # - name: trivy/sarif
@@ -124,7 +133,7 @@ runs:
     - name: trivy/sbom
       if: ${{ github.ref_name == github.event.repository.default_branch }}
       shell: bash
-      run: trivy convert --config .trivy.yaml --format github --output dependency-results.sbom.json trivy-results.json
+      run: trivy convert ${{ steps.init.outputs.config_arg }} --format github --output dependency-results.sbom.json trivy-results.json
 
     - name: trivy/upload-sbom
       if: ${{ github.ref_name == github.event.repository.default_branch }}
