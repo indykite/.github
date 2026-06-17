@@ -23,7 +23,15 @@ on: # yamllint disable-line rule:truthy
 permissions:
   contents: write # required for trivy to upload artifacts
   pull-requests: read # required for commitlint
+  security-events: write # required for trivy to upload SARIF to GitHub Security tab (master only)
+  actions: write # required for trivy to upload SBOM artifact (master only)
 
+#
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+#
 jobs:
   commitlint:
     name: commitlint
@@ -60,10 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: trivy
-        # uses: ./.github/actions/pre-commit/action.yaml
         uses: indykite/.github/.github/actions/trivy@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   checkov:
     name: checkov

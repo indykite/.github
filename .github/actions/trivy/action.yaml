@@ -3,18 +3,41 @@
 # DO NOT EDIT!!!
 # Managed by GitHub Actions
 #
+#
+# Prerequisites (calling job must declare these permissions):
+#   - 'permissions.security-events: write'  -- required by 'github/codeql-action/upload-sarif' (SARIF upload, master only)
+#   - 'permissions.actions: write'          -- required by 'actions/upload-artifact' (SBOM upload, fs + master only)
+#
+# No token input is needed: both upload steps use the implicit 'github.token' from the calling job.
+#
 name: trivy
-description: Runs Trivy vulnerability scanner
+description: >-
+  Runs Trivy vulnerability scanner. Scans once to JSON, then uses 'trivy convert'
+  to produce all output formats without redundant re-scans.
+  Always prints table to CI logs.
+  On master: uploads SARIF to GitHub Security tab (requires security-events: write)
+  and uploads SBOM JSON as a workflow artifact for 'fs' scans (requires actions: write).
 
 inputs:
-  github_token:
-    description: GitHub token for uploading artifacts
-    required: true
+  scan-type:
+    description: "Scan type: 'fs' for filesystem (default) or 'image' for container image."
+    required: false
+    default: 'fs'
+  image-ref:
+    description: "Image reference for image scan, e.g. 'my-registry/my-app:tag'. Required when scan-type is 'image'."
+    required: false
+    default: ''
+  trivy-db-force-update:
+    description: Force re-download of Trivy DBs. By default the daily cached DBs are reused.
+    required: false
+    default: '0'
 
 runs:
   using: composite
   steps:
+    # Checkout is only needed for 'fs' scans; 'image' scans require the caller to checkout first.
     - name: actions/checkout
+      if: ${{ inputs.scan-type == 'fs' }}
       uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 - https://github.com/actions/checkout/releases
 
     - name: setup/oras
@@ -29,12 +52,11 @@ runs:
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
       id: cache
       with:
-        # lookup-only: ${{ github.event_name != 'pull_request' }} # don't download on 'master'; if missing, will be saved anyway
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
 
     - name: trivy-db
-      if: (!steps.cache.outputs.cache-hit)
+      if: ${{ !steps.cache.outputs.cache-hit || inputs.trivy-db-force-update == '1' }}
       shell: bash
       run: |
         mkdir -p "$GITHUB_WORKSPACE/.cache/trivy/db"
@@ -42,40 +64,71 @@ runs:
         tar -xzf db.tar.gz -C "$GITHUB_WORKSPACE/.cache/trivy/db"
         rm db.tar.gz
 
-    # - name: Download and extract the Java DB
-    #   if: (!steps.cache.outputs.cache-hit)
-    #   shell: bash
-    #   run: |
-    #     mkdir -p $GITHUB_WORKSPACE/.cache/trivy/java-db
-    #     oras pull ghcr.io/aquasecurity/trivy-java-db:1
-    #     tar -xzf javadb.tar.gz -C $GITHUB_WORKSPACE/.cache/trivy/java-db
-    #     rm javadb.tar.gz
-
     - name: actions/cache/save
       uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 - https://github.com/actions/cache/releases
-      if: (!steps.cache.outputs.cache-hit)
+      if: ${{ !steps.cache.outputs.cache-hit }}
       with:
         path: ${{ github.workspace }}/.cache/trivy
         key: cache-trivy-${{ steps.date.outputs.date }}
 
-    - name: trivy # results in table format
+    # ---- Single scan → JSON; all output formats are produced via 'trivy convert' below ----
+    # https://github.com/aquasecurity/trivy/issues/3243#issuecomment-1853820751
+    - name: trivy/scan
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 - https://github.com/aquasecurity/trivy-action/releases
+      env:
+        TRIVY_SKIP_DB_UPDATE: 'true'
+        TRIVY_SKIP_JAVA_DB_UPDATE: 'true'
       with:
         version: 'v0.71.1'
-        scan-type: 'fs'
-        scan-ref: '.'
+        scan-type: ${{ inputs.scan-type }}
+        scan-ref: ${{ inputs.scan-type == 'fs' && '.' || '' }}
+        image-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
         trivy-config: .trivy.yaml
+        format: json
+        output: trivy-results.json
 
-    # XXX: no option to do multiple formats in one scan, so doing separate runs
-    - name: trivy/sbom # JSON SBOM format with uploading to GitHub Artifacts
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 - https://github.com/aquasecurity/trivy-action/releases
+    # ---- Table: always printed to CI logs for clear human-readable visibility ----
+    - name: trivy/table
+      shell: bash
+      if: always() # run even if the scan step fails, to show results in table format in CI logs
+      run: trivy convert --config .trivy.yaml --format table trivy-results.json
+
+    # ---- SARIF + GitHub Security tab upload (default branch only) ----
+    # - name: trivy/sarif
+    #   if: ${{ github.ref_name == github.event.repository.default_branch }}
+    #   shell: bash
+    #   run: trivy convert --config .trivy.yaml --format sarif --output trivy-results.sarif trivy-results.json
+
+    # - name: trivy/upload-sarif
+    #   uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2 - https://github.com/github/codeql-action/releases
+    #   if: ${{ github.ref_name == github.event.repository.default_branch }}
+    #   with:
+    #     sarif_file: trivy-results.sarif
+    #     category: trivy-${{ inputs.scan-type }}
+
+    # ---- Generate artifact name based on scan type ----
+    - name: trivy/artifact-name
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      id: artifact
+      shell: bash
+      run: |
+        if [[ "${{ inputs.scan-type }}" == "fs" ]]; then
+          echo "name=trivy-sbom-report" >> "$GITHUB_OUTPUT"
+        else
+          # Extract image name and tag from image-ref, strip registry and port, replace : with -
+          image_name=$(echo "${{ inputs.image-ref }}" | sed 's|.*/||' | tr ':' '-')
+          echo "name=trivy-sbom-${image_name}" >> "$GITHUB_OUTPUT"
+        fi
+
+    # ---- GitHub SBOM: convert to GitHub format and upload as artifact (fs scans + image scans, default branch only) ----
+    - name: trivy/sbom
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      shell: bash
+      run: trivy convert --config .trivy.yaml --format github --output dependency-results.sbom.json trivy-results.json
+
+    - name: trivy/upload-sbom
+      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0 - https://github.com/actions/upload-artifact/releases
       with:
-        skip-setup-trivy: true
-        scan-type: 'fs'
-        scan-ref: '.'
-        trivy-config: .trivy.yaml
-        # format: 'sarif' - https://github.com/aquasecurity/trivy-action?tab=readme-ov-file#using-trivy-with-github-code-scanning
-        # output: 'trivy-results.sarif'
-        format: 'github'
-        output: 'dependency-results.sbom.json'
-        github-pat: ${{ inputs.github_token }}
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ github.workspace }}/dependency-results.sbom.json
