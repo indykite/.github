@@ -35,16 +35,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: actions/checkout/fetch-depth
-      id: fetch-depth
-      shell: bash
-      run: echo "fetch-depth=$(expr ${{ github.event.pull_request.commits }} + 1)" >> "$GITHUB_OUTPUT"
-
-    - name: actions/checkout
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 - https://github.com/actions/checkout/releases
+    - name: actions/git-checkout
+      uses: indykite/.github/.github/actions/git-checkout@master # actions/checkout with dynamic fetch-depth resolution
       with:
         ref: ${{ github.event.pull_request.head.sha }}
-        fetch-depth: ${{ steps.fetch-depth.outputs.fetch-depth }} # all commits for the given PR +1 more
 
     - name: actions/checkout/fetch ${{ github.base_ref }}
       if: inputs.checkout_fetch_master == '1'
