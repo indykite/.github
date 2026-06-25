@@ -37,8 +37,8 @@ runs:
   steps:
     # Checkout is only needed for 'fs' scans; 'image' scans require the caller to checkout first.
     - name: actions/checkout
+      uses: indykite/.github/.github/actions/git-checkout@master # actions/checkout with dynamic fetch-depth resolution
       if: ${{ inputs.scan-type == 'fs' }}
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 - https://github.com/actions/checkout/releases
 
     - name: setup/oras
       uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2 - https://github.com/oras-project/setup-oras/releases

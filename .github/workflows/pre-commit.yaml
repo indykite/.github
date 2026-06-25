@@ -63,6 +63,13 @@ jobs:
             ${{ vars.PRE_COMMIT_SKIP != null && ',' || '' }}${{ vars.PRE_COMMIT_SKIP }}
             ${{ format('{0}', github.event_name != 'pull_request' && ',pre-commit-autoupdate,no-commit-to-branch' || '' ) }}
 
+  # renovate-validate:
+  #   name: renovate-validate
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: renovate-validate
+  #       uses: indykite/.github/.github/actions/renovate-validate@master
+
   trivy:
     name: trivy
     runs-on: ubuntu-latest

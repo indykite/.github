@@ -9,8 +9,8 @@ description: Runs Checkov IaC security scanner
 runs:
   using: composite
   steps:
-    - name: actions/checkout
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 - https://github.com/actions/checkout/releases
+    - name: actions/git-checkout
+      uses: indykite/.github/.github/actions/git-checkout@master # actions/checkout with dynamic fetch-depth resolution
 
     - name: detect checkov config
       id: checkov_config

@@ -1,0 +1,157 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+name: git-checkout
+description: Resolves fetch depth and performs actions/checkout
+
+# 1:1 inputs as https://github.com/actions/checkout
+inputs:
+  repository:
+    description: Repository name with owner
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: Branch, tag, or SHA to checkout
+    required: false
+    default: ""
+  token:
+    description: Personal access token used to fetch the repository
+    required: false
+    default: ${{ github.token }}
+  ssh-key:
+    description: SSH key used to fetch the repository
+    required: false
+    default: ""
+  ssh-known-hosts:
+    description: Known hosts in addition to implicit github.com host key
+    required: false
+    default: ""
+  ssh-strict:
+    description: Whether to perform strict host key checking
+    required: false
+    default: "true"
+  ssh-user:
+    description: User to use when connecting to the remote SSH host
+    required: false
+    default: "git"
+  persist-credentials:
+    description: Whether to configure token or SSH key in local git config
+    required: false
+    default: "true"
+  path:
+    description: Relative path under GITHUB_WORKSPACE to place the repository
+    required: false
+    default: ""
+  clean:
+    description: Whether to clean/reset before fetching
+    required: false
+    default: "true"
+  filter:
+    description: Partial clone filter
+    required: false
+    default: ""
+  sparse-checkout:
+    description: Sparse checkout patterns separated by new lines
+    required: false
+    default: ""
+  sparse-checkout-cone-mode:
+    description: Whether to use cone mode for sparse checkout
+    required: false
+    default: "true"
+  fetch-depth:
+    description: Number of commits to fetch; when empty resolved dynamically
+    required: false
+    default: ""
+  fetch-tags:
+    description: Whether to fetch tags even when fetch-depth > 0
+    required: false
+    default: "false"
+  show-progress:
+    description: Whether to show progress output when fetching
+    required: false
+    default: "true"
+  lfs:
+    description: Whether to download Git-LFS files
+    required: false
+    default: "false"
+  submodules:
+    description: Whether to checkout submodules
+    required: false
+    default: "false"
+  set-safe-directory:
+    description: Whether to add repository path as safe.directory
+    required: false
+    default: "true"
+  github-server-url:
+    description: Base URL for GitHub instance
+    required: false
+    default: ""
+  allow-unsafe-pr-checkout:
+    description: Allow unsafe fork PR checkout for pull_request_target/workflow_run
+    required: false
+    default: "false"
+
+outputs:
+  fetch-depth:
+    description: Fetch depth used for actions/checkout
+    value: ${{ steps.resolve-fetch-depth.outputs.fetch-depth }}
+  ref:
+    description: The branch, tag, or SHA that was checked out
+    value: ${{ steps.checkout.outputs.ref }}
+  commit:
+    description: The commit SHA that was checked out
+    value: ${{ steps.checkout.outputs.commit }}
+
+runs:
+  using: composite
+  steps:
+    - name: resolve/fetch-depth
+      id: resolve-fetch-depth
+      shell: bash
+      run: |
+        if [[ -n "${{ inputs.fetch-depth }}" ]]; then
+          echo "fetch-depth=${{ inputs.fetch-depth }}" >> "${GITHUB_OUTPUT}"
+        else
+          case "${{ github.event_name }}" in
+            pull_request)
+              # Enough history to diff every commit in the PR against its base.
+              echo "fetch-depth=$((${{ github.event.pull_request.commits }} + 1))" >> "${GITHUB_OUTPUT}"
+              ;;
+            push)
+              # One-commit diff against the previous tip.
+              echo "fetch-depth=2" >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              # Non-diff events do not need history.
+              echo "fetch-depth=1" >> "${GITHUB_OUTPUT}"
+              ;;
+          esac
+        fi
+
+    - name: actions/checkout
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 - https://github.com/actions/checkout/releases
+      id: checkout
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        token: ${{ inputs.token }}
+        ssh-key: ${{ inputs.ssh-key }}
+        ssh-known-hosts: ${{ inputs.ssh-known-hosts }}
+        ssh-strict: ${{ inputs.ssh-strict }}
+        ssh-user: ${{ inputs.ssh-user }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        path: ${{ inputs.path }}
+        clean: ${{ inputs.clean }}
+        filter: ${{ inputs.filter }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}
+        fetch-depth: ${{ steps.resolve-fetch-depth.outputs.fetch-depth }}
+        fetch-tags: ${{ inputs.fetch-tags }}
+        show-progress: ${{ inputs.show-progress }}
+        lfs: ${{ inputs.lfs }}
+        submodules: ${{ inputs.submodules }}
+        set-safe-directory: ${{ inputs.set-safe-directory }}
+        github-server-url: ${{ inputs.github-server-url }}
+        allow-unsafe-pr-checkout: ${{ inputs.allow-unsafe-pr-checkout }}
