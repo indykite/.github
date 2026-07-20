@@ -31,6 +31,10 @@ inputs:
     description: Force re-download of Trivy DBs. By default the daily cached DBs are reused.
     required: false
     default: '0'
+  exit-code:
+    description: Trivy exit code when vulnerabilities are found (for example '0' to not fail, '1' to fail).
+    required: false
+    default: '1'
 
 runs:
   using: composite
@@ -93,6 +97,7 @@ runs:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-type == 'fs' && '.' || '' }}
         image-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
+        exit-code: ${{ inputs.exit-code }}
         trivy-config: ${{ steps.init.outputs.has_config == 'true' && '.trivy.yaml' || '' }}
         format: json
         output: trivy-results.json
