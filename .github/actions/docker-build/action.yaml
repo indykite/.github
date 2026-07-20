@@ -1,0 +1,234 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+#
+# Prerequisites:
+#   - 'actions/checkout' must be called prior to this action to fetch the repository
+#   - 'permissions.id-token: write' must be set in the workflow using this action if calling 'docker-setup' sub-action here,
+#     required by https://github.com/google-github-actions/auth
+#   - When 'trivy-scan: 1' is set, the calling job must also declare:
+#     - 'permissions.security-events: write'  -- required for SARIF upload to GitHub Security tab (master only)
+#     - 'permissions.actions: write'           -- required for SBOM artifact upload (master only)
+#
+name: docker-build
+# https://docs.docker.com/build/ci/github-actions/
+description: Build Docker container and optionally push it to a container registry or Docker Hub
+
+inputs:
+  # GCP Authentication
+  gcp-service-account:
+    description: GCP Service Account name. If not given, 'indykite/.github/.github/actions/docker-setup' must be initialized prior to this action.
+    required: false
+    default: ""
+  workload-identity-provider:
+    description: Workload identity provider. If not given, 'indykite/.github/.github/actions/docker-setup' must be initialized prior to this action.
+    required: false
+    default: ""
+  # Docker Hub Authentication
+  dockerhub-username:
+    description: Docker Hub username. If given, this action logs in to Docker Hub before pushing.
+    required: false
+    default: ""
+  dockerhub-token:
+    description: Docker Hub access token. If given, this action logs in to Docker Hub before pushing.
+    required: false
+    default: ""
+  # Destination registry & image info
+  docker-repository-uri:
+    required: false
+    default: ""
+    description: >-
+      Docker repository URI having full hostname, any prefixes (e.g. region) and repository name itself, if any,
+      e.g. '<secrets.GCP_GAR_DOCKER>' or 'docker.io/indykite'.
+      If not given, the resulted image won't be pushed and only built for local testing.
+  docker-image-name:
+    required: true
+    description: Docker image name
+  docker-image-tag:
+    description: Docker image tag
+    required: true
+  docker-image-tag-latest:
+    description: Flag to tag docker image as latest
+    required: false
+    default: "0"
+  # Docker image build context
+  docker-context:
+    description: Docker context (directory from which the image will be built)
+    required: false
+    default: "."
+  dockerfile:
+    description: Path to the Dockerfile. (default {context}/Dockerfile)
+    required: false
+    default: ""
+  docker-target:
+    description: Docker build target stage (for multi-stage builds)
+    required: false
+    default: ""
+  # Build arguments
+  platforms:
+    description: Comma separated list of target platforms for multi-platform build
+    required: false
+    default: "linux/amd64" # "linux/amd64,linux/arm64"
+  build-args:
+    description: >-
+      JSON string of extra build-args to pass to Docker, e.g. '{"FOO":"bar","BAZ":"quux"}'.
+      Each key/value will be unpacked to a newline-separated `KEY=VALUE` entry and appended
+      to the default build args.
+    required: false
+    default: ""
+  secrets:
+    description: >-
+      JSON string of extra secrets to pass to Docker, e.g. '{"FOO":"bar","BAZ":"quux"}'.
+      Each key/value will be unpacked to a newline-separated `KEY=VALUE` entry and appended
+      to the default build args.
+    required: false
+    default: ""
+  # Optional image scan & SBOM push
+  trivy-scan:
+    description: Flag to run Trivy vulnerabilities scan after image is built
+    required: false
+    default: "0"
+  trivy-db-force-update:
+    description: Force to update Trivy DBs before scan. But normally should use the cached DBs from 'pre-commit-cache' jobs.
+    required: false
+    default: "0"
+  trivy-exit-code:
+    description: Trivy exit code when vulnerabilities are found (for example '0' to not fail, '1' to fail).
+    required: false
+    default: "1"
+
+#
+runs:
+  using: composite
+  steps:
+    - name: setup/action
+      id: setup-action
+      shell: bash
+      env:
+        GITHUB_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+        GITHUB_RUN_STARTED_AT: ${{ github.run_started_at }}
+      run: |
+        set -euo pipefail
+
+        if [[ -n "${{ inputs.dockerhub-username }}" && -z "${{ inputs.dockerhub-token }}" ]] || \
+          [[ -z "${{ inputs.dockerhub-username }}" && -n "${{ inputs.dockerhub-token }}" ]]; then
+          echo "::error::dockerhub-username and dockerhub-token must be set together"
+          exit 1
+        fi
+
+        # ---- Image URI and Dockerfile ----
+        DOCKER_IMAGE_URI="${{ inputs.docker-image-name }}"
+        if [[ -n "${{ inputs.docker-repository-uri }}" ]]; then
+          DOCKER_IMAGE_URI="${{ inputs.docker-repository-uri }}/${{ inputs.docker-image-name }}"
+        fi
+        echo "DOCKER_IMAGE_URI=${DOCKER_IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+        DOCKER_REPOSITORY_HOSTNAME="$(echo "${{ inputs.docker-repository-uri }}" | awk -F/ '{print $1}')"
+        echo "DOCKER_REPOSITORY_HOSTNAME=${DOCKER_REPOSITORY_HOSTNAME}" >> "$GITHUB_OUTPUT"
+
+        DOCKERFILE="${{ inputs.docker-context }}/Dockerfile"
+        if [[ -n "${{ inputs.dockerfile }}" ]]; then
+          DOCKERFILE="${{ inputs.dockerfile }}"
+        fi
+        echo "DOCKERFILE=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
+
+        # ---- IMAGE info ----
+        IMAGE_REVISION="${GITHUB_SHA:0:8}" # short SHA (8 chars)
+
+        if [[ -n "${GITHUB_COMMIT_TIMESTAMP:-}" ]]; then
+          IMAGE_CREATED="$GITHUB_COMMIT_TIMESTAMP"
+        elif [[ -n "${GITHUB_RUN_STARTED_AT:-}" ]]; then
+          IMAGE_CREATED="$GITHUB_RUN_STARTED_AT"
+        else
+          IMAGE_CREATED="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        fi
+
+        # ---- Build args ----
+        BUILD_ARGS_JSON="${{ inputs.build-args }}"
+        EXTRA_BUILD_ARGS=""
+        if [[ -n "$BUILD_ARGS_JSON" ]]; then
+          if jq -e . >/dev/null 2>&1 <<<"$BUILD_ARGS_JSON"; then
+            EXTRA_BUILD_ARGS="$(jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | .[]' <<<"$BUILD_ARGS_JSON" 2>/dev/null || true)"
+          else
+            EXTRA_BUILD_ARGS="$BUILD_ARGS_JSON"
+          fi
+        fi
+
+        # ---- Secrets ----
+        SECRETS_JSON="${{ inputs.secrets }}"
+        # Strip GitHub wrapping quotes
+        SECRETS_JSON="${SECRETS_JSON#\'}"
+        SECRETS_JSON="${SECRETS_JSON%\'}"
+
+        SECRET_ARGS=""
+        if [[ -n "$SECRETS_JSON" ]]; then
+          SECRET_ARGS="$(jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | .[]' <<<"$SECRETS_JSON" 2>/dev/null || true)"
+        fi
+
+        # ---- Emit outputs ----
+        {
+          echo "BUILD_ARGS<<EOF"
+          echo "IMAGE_CREATED=$IMAGE_CREATED"
+          echo "IMAGE_REVISION=$IMAGE_REVISION"
+          echo "IMAGE_TAG=${{ inputs.docker-image-tag }}"
+          [[ -n "$EXTRA_BUILD_ARGS" ]] && echo "$EXTRA_BUILD_ARGS"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          echo "SECRET_ARGS<<EOF"
+          [[ -n "$SECRET_ARGS" ]] && echo "$SECRET_ARGS"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    #
+    # Authenticate with Docker Registries and setup Docker
+    #
+    - name: setup/docker
+      uses: indykite/.github/.github/actions/docker-setup@master
+      with:
+        gcp-service-account: ${{ inputs.gcp-service-account }}
+        workload-identity-provider: ${{ inputs.workload-identity-provider }}
+        docker-repository-hostname: ${{ steps.setup-action.outputs.DOCKER_REPOSITORY_HOSTNAME }}
+        dockerhub-username: ${{ inputs.dockerhub-username }}
+        dockerhub-token: ${{ inputs.dockerhub-token }}
+
+    #
+    # Build and push Docker image
+    #
+    - name: docker/build-push
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0 - https://github.com/docker/build-push-action/releases
+      with:
+        # Cache
+        # cache-from: type=gha # = GitHub Actions Cache
+        # cache-to: type=gha,mode=max
+        # Destination registry & image info
+        push: ${{ inputs.docker-repository-uri != '' }}
+        tags: |-
+          ${{ steps.setup-action.outputs.DOCKER_IMAGE_URI }}:${{ inputs.docker-image-tag }}
+          ${{ inputs.docker-image-tag-latest == '1' && format('{0}:latest', steps.setup-action.outputs.DOCKER_IMAGE_URI) || '' }}
+        # Docker image build context
+        context: ${{ inputs.docker-context }}
+        file: ${{ steps.setup-action.outputs.DOCKERFILE }}
+        target: ${{ inputs.docker-target }}
+        # Build arguments
+        platforms: ${{ inputs.platforms }}
+        build-args: ${{ steps.setup-action.outputs.BUILD_ARGS }}
+        secrets: ${{ steps.setup-action.outputs.SECRET_ARGS }}
+        # SBOM
+        provenance: mode=max
+        sbom: true
+
+    #
+    # Scan Docker image (Trivy): table in CI logs always, SARIF to Security tab on master only
+    #
+    - name: trivy/scan
+      uses: indykite/.github/.github/actions/trivy@master
+      if: ${{ inputs.trivy-scan == '1' }}
+      with:
+        scan-type: image
+        image-ref: ${{ steps.setup-action.outputs.DOCKER_IMAGE_URI }}:${{ inputs.docker-image-tag }}
+        trivy-db-force-update: ${{ inputs.trivy-db-force-update }}
+        exit-code: ${{ inputs.trivy-exit-code }}

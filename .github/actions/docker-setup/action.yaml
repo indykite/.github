@@ -1,0 +1,79 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+name: docker-setup
+# https://docs.docker.com/build/ci/github-actions/
+description: Setup Docker to access IndyKite registry
+
+inputs:
+  gcp-service-account:
+    required: false
+    default: ""
+    description: >-
+      GCP Service Account full name, i.e. '<SA_NAME>@<GCP_PROJECT_ID>.iam.gserviceaccount.com'.
+  workload-identity-provider:
+    required: false
+    default: ""
+    description: Workload identity provider
+  docker-repository-hostname:
+    required: false
+    default: "europe-west1-docker.pkg.dev"
+    description: >-
+      Docker repository URL.
+      As long as committed to private repo, it's OK to have default value committed in plain-text.
+      Prefer to switch to secret if expose to public repo is needed.
+  # Docker Hub Authentication
+  dockerhub-username:
+    description: Docker Hub username. If given, this action logs in to Docker Hub before pushing.
+    required: false
+    default: ""
+  dockerhub-token:
+    description: Docker Hub access token. If given, this action logs in to Docker Hub before pushing.
+    required: false
+    default: ""
+  #
+  docker-buildx-setup:
+    description: >-
+      Flag to setup Docker Buildx for multi-platform builds. Enabled by default.
+      If set to '0', Buildx setup is skipped and only Docker login is performed.
+    required: false
+    default: "1"
+
+runs:
+  using: composite
+  steps:
+    #
+    # Authenticate with GCP Artifactory Registry
+    #
+    - name: gcloud/auth
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 - https://github.com/google-github-actions/auth/releases
+      if: ${{ inputs.workload-identity-provider != '' && inputs.gcp-service-account != '' }}
+      with:
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        service_account: ${{ inputs.gcp-service-account }}
+
+    #
+    # Authenticate with Docker Hub when credentials are provided
+    #
+    - name: docker/login
+      uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0 - https://github.com/docker/login-action/releases
+      if: ${{ inputs.dockerhub-username != '' && inputs.dockerhub-token != '' }}
+      with:
+        registry: docker.io
+        username: ${{ inputs.dockerhub-username }}
+        password: ${{ inputs.dockerhub-token }}
+
+    - name: docker/setup-buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0 - https://github.com/docker/setup-buildx-action/releases
+      #      # https://docs.docker.com/build/ci/github-actions/multi-platform/
+      #    - name: Set up QEMU
+      #      uses: docker/setup-qemu-action@v2
+      if: ${{ inputs.docker-buildx-setup == '1' }}
+
+    - name: gcloud/configure-docker
+      if: ${{ inputs.workload-identity-provider != '' && inputs.gcp-service-account != '' }}
+      shell: bash
+      run: |-
+        gcloud --quiet auth configure-docker ${{ inputs.docker-repository-hostname }}
