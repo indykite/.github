@@ -97,7 +97,7 @@ runs:
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-type == 'fs' && '.' || '' }}
         image-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
-        exit-code: ${{ inputs.exit-code }}
+        exit-code: '0'
         trivy-config: ${{ steps.init.outputs.has_config == 'true' && '.trivy.yaml' || '' }}
         format: json
         output: trivy-results.json
@@ -105,8 +105,8 @@ runs:
     # ---- Table: always printed to CI logs for clear human-readable visibility ----
     - name: trivy/table
       shell: bash
-      if: always() # run even if the scan step fails, to show results in table format in CI logs
-      run: trivy convert ${{ steps.init.outputs.config_arg }} --format table trivy-results.json
+      if: ${{ hashFiles('trivy-results.json') != '' }}
+      run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code 0 --format table trivy-results.json
 
     # ---- SARIF + GitHub Security tab upload (default branch only) ----
     # - name: trivy/sarif
@@ -123,7 +123,7 @@ runs:
 
     # ---- Generate artifact name based on scan type ----
     - name: trivy/artifact-name
-      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      if: ${{ github.ref_name == github.event.repository.default_branch && hashFiles('trivy-results.json') != '' }}
       id: artifact
       shell: bash
       run: |
@@ -137,13 +137,19 @@ runs:
 
     # ---- GitHub SBOM: convert to GitHub format and upload as artifact (fs scans + image scans, default branch only) ----
     - name: trivy/sbom
-      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      if: ${{ github.ref_name == github.event.repository.default_branch && hashFiles('trivy-results.json') != '' }}
       shell: bash
-      run: trivy convert ${{ steps.init.outputs.config_arg }} --format github --output dependency-results.sbom.json trivy-results.json
+      run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code 0 --format github --output dependency-results.sbom.json trivy-results.json
 
     - name: trivy/upload-sbom
-      if: ${{ github.ref_name == github.event.repository.default_branch }}
+      if: ${{ github.ref_name == github.event.repository.default_branch && hashFiles('dependency-results.sbom.json') != '' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 - https://github.com/actions/upload-artifact/releases
       with:
         name: ${{ steps.artifact.outputs.name }}
         path: ${{ github.workspace }}/dependency-results.sbom.json
+
+    # ---- Apply the caller's failure policy after report generation and uploads complete ----
+    - name: trivy/fail-on-findings
+      if: ${{ always() && hashFiles('trivy-results.json') != '' }}
+      shell: bash
+      run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code ${{ inputs.exit-code }} --format json --output /dev/null trivy-results.json

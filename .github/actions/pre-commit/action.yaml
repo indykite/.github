@@ -54,16 +54,57 @@ runs:
         # required for support of utility repos with non-root 'go.mod' location
         FILE=$(find . -name go.mod | head -n 1)
 
+        # Detect Node package manager cache strategy from lockfile presence.
+        NODE_PM=""
+        NODE_PM_LOCKFILE=""
+        NODE_VERSION_FILE=""
+        PNPM_VERSION="latest"
+        if [[ -f "pnpm-lock.yaml" ]]; then
+          NODE_PM="pnpm"
+          NODE_PM_LOCKFILE="pnpm-lock.yaml"
+        elif [[ -f "package-lock.json" ]]; then
+          NODE_PM="npm"
+          NODE_PM_LOCKFILE="package-lock.json"
+        elif [[ -f "npm-shrinkwrap.json" ]]; then
+          NODE_PM="npm"
+          NODE_PM_LOCKFILE="npm-shrinkwrap.json"
+        elif [[ -f "yarn.lock" ]]; then
+          NODE_PM="yarn"
+          NODE_PM_LOCKFILE="yarn.lock"
+        fi
+
+        if [[ -f "package.json" ]]; then
+          NODE_VERSION_FILE="package.json"
+          PACKAGE_MANAGER=$(python3 -c 'import json,sys; print(json.load(open("package.json")).get("packageManager", ""))' 2>/dev/null || true)
+          if [[ "$PACKAGE_MANAGER" == pnpm@* ]]; then
+            PNPM_VERSION="${PACKAGE_MANAGER#pnpm@}"
+          fi
+        fi
+
         set -x
         if [[ ! -f "${_CONFIG}" ]]; then
           echo "[INFO] ${_CONFIG} not found, skipping pre-commit action setup."
             echo "PRE_COMMIT_RUN=0" >>"$GITHUB_OUTPUT"
         else
+          # Avoid pipefail-induced exits when there are no node-related hooks in config.
+          IS_NPM_MATCHES=$(grep -Ec "(npm|node)" "$_CONFIG" || true)
+          IS_NODE_LANGUAGE_MATCHES=$(grep -Ec "language: node" "$_CONFIG" || true)
+          IS_NPM=$((IS_NPM_MATCHES - IS_NODE_LANGUAGE_MATCHES))
+          if [[ "$IS_NPM" -gt 0 && -z "$NODE_PM" ]]; then
+            echo "[ERROR] Node hooks detected in ${_CONFIG}, but no supported lockfile found."
+            echo "[ERROR] Expected one of: pnpm-lock.yaml, package-lock.json, npm-shrinkwrap.json, yarn.lock"
+            exit 1
+          fi
+
           {
             echo "PRE_COMMIT_RUN=1"
             echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
             echo "IS_GOLANG=${IS_GOLANG:-$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")}"
-            echo "IS_NPM=$(grep -E "(npm|node)" "$_CONFIG" | grep -cv "language: node")"
+            echo "IS_NPM=$IS_NPM"
+            echo "NODE_PM=$NODE_PM"
+            echo "NODE_PM_LOCKFILE=$NODE_PM_LOCKFILE"
+            echo "NODE_VERSION_FILE=$NODE_VERSION_FILE"
+            echo "PNPM_VERSION=$PNPM_VERSION"
             echo "gomod_path=$FILE"
             echo "CACHE_MONTH=$(date +'%Y%m')"
           } >>"$GITHUB_OUTPUT"
@@ -124,12 +165,24 @@ runs:
         && steps.action-prep.outputs.gomod_path != ''
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
 
+    - name: setup/pnpm
+      uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9 - https://github.com/pnpm/action-setup/releases
+      if: >-
+        steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
+        && steps.action-prep.outputs.IS_NPM > 0
+        && steps.action-prep.outputs.NODE_PM == 'pnpm'
+        && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
+      with:
+        version: ${{ steps.action-prep.outputs.PNPM_VERSION }}
+        cache: true
+        cache_dependency_path: ${{ steps.action-prep.outputs.NODE_PM_LOCKFILE }}
+
     - name: setup/node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 - https://github.com/actions/setup-node/releases
       with:
-        node-version: latest
-        node-version-file: "package.json"
-        cache: "npm"
+        node-version-file: ${{ steps.action-prep.outputs.NODE_VERSION_FILE }}
+        cache: ${{ steps.action-prep.outputs.NODE_PM }}
+        cache-dependency-path: ${{ steps.action-prep.outputs.NODE_PM_LOCKFILE }}
       if: >-
         steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
         && steps.action-prep.outputs.IS_NPM > 0
@@ -148,6 +201,8 @@ runs:
         IS_DEBUG: ${{ runner.debug }} # set only if debug logging is enabled, and always has the value of 1
         IS_GOLANG: ${{ steps.action-prep.outputs.IS_GOLANG }}
         IS_NPM: ${{ steps.action-prep.outputs.IS_NPM }}
+        NODE_PM: ${{ steps.action-prep.outputs.NODE_PM }}
+        NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }} # normally empty, but required FontAwesome Pro packages
         GITHUB_TOKEN: ${{ inputs.github_token }}
         TG_PROVIDER_CACHE: 1
         TG_PROVIDER_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
