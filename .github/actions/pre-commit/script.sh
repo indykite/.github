@@ -189,9 +189,35 @@ for manager in "${!PKG_MANAGERS[@]}"; do
 done
 echo
 
+# Ensure pnpm can resolve private @fortawesome packages during setup/pre-commit.
+# HACK: workaround for 'frontend-monorepo', TBD for generic cases
+if [[ -n "${NODE_AUTH_TOKEN:-}" ]]; then
+    {
+        echo "@fortawesome:registry=https://npm.fontawesome.com/"
+        echo "//npm.fontawesome.com/:_authToken=${NODE_AUTH_TOKEN}"
+    } >>"${HOME}/.npmrc"
+fi
+
 # installed into './node_modules/' and not cached
 if [[ ${IS_NPM} -gt 0 ]]; then
-    npm ci --no-fund --cache "${NPM_CACHE}" --prefer-offline
+    case "${NODE_PM:-}" in
+    pnpm)
+        pnpm install --frozen-lockfile --ignore-scripts
+        ;;
+    npm)
+        npm ci --no-fund --cache "${NPM_CACHE}" --prefer-offline
+        ;;
+    yarn)
+        yarn install --frozen-lockfile
+        ;;
+    "")
+        echo "[INFO] No supported Node lockfile found, skipping Node dependency install."
+        ;;
+    *)
+        echo "⚠️ Unsupported Node package manager: ${NODE_PM}"
+        exit 1
+        ;;
+    esac
 fi
 
 if [[ ${IS_CACHE} != "true" ]]; then
