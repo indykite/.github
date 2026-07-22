@@ -1,7 +1,7 @@
-#
-# DO NOT EDIT!!!
-# Managed by GitHub Actions
-#
+<!--
+DO NOT EDIT!!!
+Managed by GitHub Actions
+-->
 # docker-setup action
 
 GitHub action for setting up Docker
