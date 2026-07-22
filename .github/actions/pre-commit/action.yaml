@@ -55,27 +55,48 @@ runs:
         FILE=$(find . -name go.mod | head -n 1)
 
         # Detect Node package manager cache strategy from lockfile presence.
+        # Supports non-root lockfile/package.json locations.
         NODE_PM=""
         NODE_PM_LOCKFILE=""
+        NODE_PM_WORKDIR="."
         NODE_VERSION_FILE=""
         PNPM_VERSION="latest"
-        if [[ -f "pnpm-lock.yaml" ]]; then
+        LOCKFILE_PNPM=$(find . -type f -name 'pnpm-lock.yaml' -not -path '*/node_modules/*' | sort | head -n 1)
+        LOCKFILE_NPM=$(
+          find . -type f \( -name 'package-lock.json' -o -name 'npm-shrinkwrap.json' \) \
+            -not -path '*/node_modules/*' | sort | head -n 1
+        )
+        LOCKFILE_YARN=$(find . -type f -name 'yarn.lock' -not -path '*/node_modules/*' | sort | head -n 1)
+
+        # Priority: pnpm, npm, yarn.
+        LOCKFILE=""
+        if [[ -n "${LOCKFILE_PNPM}" ]]; then
           NODE_PM="pnpm"
-          NODE_PM_LOCKFILE="pnpm-lock.yaml"
-        elif [[ -f "package-lock.json" ]]; then
+          LOCKFILE="${LOCKFILE_PNPM}"
+        elif [[ -n "${LOCKFILE_NPM}" ]]; then
           NODE_PM="npm"
-          NODE_PM_LOCKFILE="package-lock.json"
-        elif [[ -f "npm-shrinkwrap.json" ]]; then
-          NODE_PM="npm"
-          NODE_PM_LOCKFILE="npm-shrinkwrap.json"
-        elif [[ -f "yarn.lock" ]]; then
+          LOCKFILE="${LOCKFILE_NPM}"
+        elif [[ -n "${LOCKFILE_YARN}" ]]; then
           NODE_PM="yarn"
-          NODE_PM_LOCKFILE="yarn.lock"
+          LOCKFILE="${LOCKFILE_YARN}"
         fi
 
-        if [[ -f "package.json" ]]; then
+        if [[ -n "${LOCKFILE}" ]]; then
+          NODE_PM_LOCKFILE="${LOCKFILE#./}"
+          NODE_PM_WORKDIR="$(dirname "${NODE_PM_LOCKFILE}")"
+        fi
+
+        if [[ -f "${NODE_PM_WORKDIR}/package.json" ]]; then
+          NODE_VERSION_FILE="${NODE_PM_WORKDIR}/package.json"
+        elif [[ -f "package.json" ]]; then
           NODE_VERSION_FILE="package.json"
-          PACKAGE_MANAGER=$(python3 -c 'import json,sys; print(json.load(open("package.json")).get("packageManager", ""))' 2>/dev/null || true)
+        fi
+
+        if [[ -n "${NODE_VERSION_FILE}" ]]; then
+          PACKAGE_MANAGER=$(
+            python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("packageManager", ""))' \
+              "${NODE_VERSION_FILE}" 2>/dev/null || true
+          )
           if [[ "$PACKAGE_MANAGER" == pnpm@* ]]; then
             PNPM_VERSION="${PACKAGE_MANAGER#pnpm@}"
           fi
@@ -92,7 +113,7 @@ runs:
           IS_NPM=$((IS_NPM_MATCHES - IS_NODE_LANGUAGE_MATCHES))
           if [[ "$IS_NPM" -gt 0 && -z "$NODE_PM" ]]; then
             echo "[ERROR] Node hooks detected in ${_CONFIG}, but no supported lockfile found."
-            echo "[ERROR] Expected one of: pnpm-lock.yaml, package-lock.json, npm-shrinkwrap.json, yarn.lock"
+            echo "[ERROR] Expected one of: pnpm-lock.yaml, package-lock.json, npm-shrinkwrap.json, yarn.lock (at repo root or nested)."
             exit 1
           fi
 
@@ -103,6 +124,7 @@ runs:
             echo "IS_NPM=$IS_NPM"
             echo "NODE_PM=$NODE_PM"
             echo "NODE_PM_LOCKFILE=$NODE_PM_LOCKFILE"
+            echo "NODE_PM_WORKDIR=$NODE_PM_WORKDIR"
             echo "NODE_VERSION_FILE=$NODE_VERSION_FILE"
             echo "PNPM_VERSION=$PNPM_VERSION"
             echo "gomod_path=$FILE"
@@ -202,6 +224,7 @@ runs:
         IS_GOLANG: ${{ steps.action-prep.outputs.IS_GOLANG }}
         IS_NPM: ${{ steps.action-prep.outputs.IS_NPM }}
         NODE_PM: ${{ steps.action-prep.outputs.NODE_PM }}
+        NODE_PM_WORKDIR: ${{ steps.action-prep.outputs.NODE_PM_WORKDIR }}
         NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }} # normally empty, but required FontAwesome Pro packages
         GITHUB_TOKEN: ${{ inputs.github_token }}
         TG_PROVIDER_CACHE: 1

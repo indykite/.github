@@ -11,6 +11,8 @@ set -o errexit -o nounset -o pipefail
 : "${IS_DEBUG:="0"}"
 : "${IS_GOLANG:="0"}"
 : "${IS_NPM:="0"}"
+: "${NODE_PM:=""}"
+: "${NODE_PM_WORKDIR:="."}"
 : "${GITHUB_ENV:=""}"
 : "${GITHUB_TOKEN:=""}"
 
@@ -200,6 +202,14 @@ fi
 
 # installed into './node_modules/' and not cached
 if [[ ${IS_NPM} -gt 0 ]]; then
+    if [[ ! -d "${NODE_PM_WORKDIR}" ]]; then
+        echo "⚠️ Node package manager workdir does not exist: ${NODE_PM_WORKDIR}"
+        exit 1
+    fi
+
+    echo "[INFO] Installing Node dependencies in: ${NODE_PM_WORKDIR}"
+    pushd "${NODE_PM_WORKDIR}" >/dev/null
+
     case "${NODE_PM:-}" in
     pnpm)
         pnpm install --frozen-lockfile --ignore-scripts
@@ -215,9 +225,12 @@ if [[ ${IS_NPM} -gt 0 ]]; then
         ;;
     *)
         echo "⚠️ Unsupported Node package manager: ${NODE_PM}"
+        popd >/dev/null
         exit 1
         ;;
     esac
+
+    popd >/dev/null
 fi
 
 if [[ ${IS_CACHE} != "true" ]]; then

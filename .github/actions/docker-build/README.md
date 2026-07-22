@@ -1,7 +1,7 @@
-#
-# DO NOT EDIT!!!
-# Managed by GitHub Actions
-#
+<!--
+DO NOT EDIT!!!
+Managed by GitHub Actions
+-->
 # docker-build action
 
 GitHub action for building Docker images.
