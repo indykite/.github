@@ -275,7 +275,11 @@ if [[ ${IS_CACHE} != "true" ]]; then
     # Golang
     if [[ ${IS_GOLANG} -gt 0 ]]; then
         echo "Golang, download modules to local cache"
-        go mod download
+        # Yes, go list will actually download all dependencies to the local cache. There are no metadata,
+        # so to be able to list required deps of nested modules, we need to download them first.
+        # This is actually better than `go mod download` because it will download only dependencies,
+        # that are directly required from the code, not just listed in nested modules go.mod files.
+        go list -test -deps ./... | awk 'END {print "Total packages " NR}'
     else
         echo "Golang, no need to download modules: IS_GOLANG=${IS_GOLANG}"
     fi
