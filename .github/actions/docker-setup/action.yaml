@@ -58,7 +58,7 @@ runs:
     # Authenticate with Docker Hub when credentials are provided
     #
     - name: docker/login
-      uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1 - https://github.com/docker/login-action/releases
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0 - https://github.com/docker/login-action/releases
       if: ${{ inputs.dockerhub-username != '' && inputs.dockerhub-token != '' }}
       with:
         registry: docker.io
