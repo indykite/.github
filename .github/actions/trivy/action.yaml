@@ -93,7 +93,7 @@ runs:
         TRIVY_SKIP_DB_UPDATE: 'true'
         TRIVY_SKIP_JAVA_DB_UPDATE: 'true'
       with:
-        version: 'v0.72.0' # renovate: datasource=github-releases,depName=aquasecurity/trivy
+        version: 'v0.73.0' # renovate: datasource=github-releases,depName=aquasecurity/trivy
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-type == 'fs' && '.' || '' }}
         image-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}

@@ -188,7 +188,7 @@ runs:
         && ((github.event_name != 'pull_request' && !steps.cache.outputs.cache-hit) || github.event_name == 'pull_request')
 
     - name: setup/pnpm
-      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9 - https://github.com/pnpm/action-setup/releases
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10 - https://github.com/pnpm/action-setup/releases
       if: >-
         steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
         && steps.action-prep.outputs.IS_NPM > 0
