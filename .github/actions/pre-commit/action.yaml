@@ -48,89 +48,7 @@ runs:
     - name: setup/env
       id: action-prep
       shell: bash
-      run: |
-        _CONFIG=".pre-commit-config.yaml"
-
-        # required for support of utility repos with non-root 'go.mod' location
-        FILE=$(find . -name go.mod | head -n 1)
-
-        # Detect Node package manager cache strategy from lockfile presence.
-        # Supports non-root lockfile/package.json locations.
-        NODE_PM=""
-        NODE_PM_LOCKFILE=""
-        NODE_PM_WORKDIR="."
-        NODE_VERSION_FILE=""
-        PNPM_VERSION="latest"
-        LOCKFILE_PNPM=$(find . -type f -name 'pnpm-lock.yaml' -not -path '*/node_modules/*' | sort | head -n 1)
-        LOCKFILE_NPM=$(
-          find . -type f \( -name 'package-lock.json' -o -name 'npm-shrinkwrap.json' \) \
-            -not -path '*/node_modules/*' | sort | head -n 1
-        )
-        LOCKFILE_YARN=$(find . -type f -name 'yarn.lock' -not -path '*/node_modules/*' | sort | head -n 1)
-
-        # Priority: pnpm, npm, yarn.
-        LOCKFILE=""
-        if [[ -n "${LOCKFILE_PNPM}" ]]; then
-          NODE_PM="pnpm"
-          LOCKFILE="${LOCKFILE_PNPM}"
-        elif [[ -n "${LOCKFILE_NPM}" ]]; then
-          NODE_PM="npm"
-          LOCKFILE="${LOCKFILE_NPM}"
-        elif [[ -n "${LOCKFILE_YARN}" ]]; then
-          NODE_PM="yarn"
-          LOCKFILE="${LOCKFILE_YARN}"
-        fi
-
-        if [[ -n "${LOCKFILE}" ]]; then
-          NODE_PM_LOCKFILE="${LOCKFILE#./}"
-          NODE_PM_WORKDIR="$(dirname "${NODE_PM_LOCKFILE}")"
-        fi
-
-        if [[ -f "${NODE_PM_WORKDIR}/package.json" ]]; then
-          NODE_VERSION_FILE="${NODE_PM_WORKDIR}/package.json"
-        elif [[ -f "package.json" ]]; then
-          NODE_VERSION_FILE="package.json"
-        fi
-
-        if [[ -n "${NODE_VERSION_FILE}" ]]; then
-          PACKAGE_MANAGER=$(
-            python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("packageManager", ""))' \
-              "${NODE_VERSION_FILE}" 2>/dev/null || true
-          )
-          if [[ "$PACKAGE_MANAGER" == pnpm@* ]]; then
-            PNPM_VERSION="${PACKAGE_MANAGER#pnpm@}"
-          fi
-        fi
-
-        set -x
-        if [[ ! -f "${_CONFIG}" ]]; then
-          echo "[INFO] ${_CONFIG} not found, skipping pre-commit action setup."
-            echo "PRE_COMMIT_RUN=0" >>"$GITHUB_OUTPUT"
-        else
-          # Avoid pipefail-induced exits when there are no node-related hooks in config.
-          IS_NPM_MATCHES=$(grep -Ec "(npm|node)" "$_CONFIG" || true)
-          IS_NODE_LANGUAGE_MATCHES=$(grep -Ec "language: node" "$_CONFIG" || true)
-          IS_NPM=$((IS_NPM_MATCHES - IS_NODE_LANGUAGE_MATCHES))
-          if [[ "$IS_NPM" -gt 0 && -z "$NODE_PM" ]]; then
-            echo "[ERROR] Node hooks detected in ${_CONFIG}, but no supported lockfile found."
-            echo "[ERROR] Expected one of: pnpm-lock.yaml, package-lock.json, npm-shrinkwrap.json, yarn.lock (at repo root or nested)."
-            exit 1
-          fi
-
-          {
-            echo "PRE_COMMIT_RUN=1"
-            echo "IS_TERRAFORM=$(grep -c "terraform" "$_CONFIG")"
-            echo "IS_GOLANG=${IS_GOLANG:-$(grep -E "\<(go|golang)\>" "$_CONFIG" | grep -vEc "(language: go|gone|- repo)")}"
-            echo "IS_NPM=$IS_NPM"
-            echo "NODE_PM=$NODE_PM"
-            echo "NODE_PM_LOCKFILE=$NODE_PM_LOCKFILE"
-            echo "NODE_PM_WORKDIR=$NODE_PM_WORKDIR"
-            echo "NODE_VERSION_FILE=$NODE_VERSION_FILE"
-            echo "PNPM_VERSION=$PNPM_VERSION"
-            echo "gomod_path=$FILE"
-            echo "CACHE_MONTH=$(date +'%Y%m')"
-          } >>"$GITHUB_OUTPUT"
-        fi
+      run: $GITHUB_ACTION_PATH/prepare-env.sh
 
     # Must run BEFORE cache/restore so the resolved Python patch version can key the cache.
     # Otherwise a runner-image Python patch bump (e.g. 3.14.3 -> 3.14.4) leaves pre-commit
@@ -141,7 +59,7 @@ runs:
       if: steps.action-prep.outputs.PRE_COMMIT_RUN == '1'
       with:
         # cache: 'pip' # dependent on **/requirements.txt or **/pyproject.toml
-        python-version: "3.14"
+        python-version: "${{ steps.action-prep.outputs.PYTHON_VERSION }}"
 
     - name: setup/python3/version
       id: pyver
