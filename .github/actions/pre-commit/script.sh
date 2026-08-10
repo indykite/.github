@@ -91,6 +91,31 @@ disable_ci_ignored_repos() {
 }
 
 #######################################
+# Remove individual hooks that have `# ci:skip` on their `- id:` line.
+#######################################
+disable_ci_skipped_hooks() {
+    local cfg="${1}"
+
+    mapfile -t skipped_hooks < <(
+        grep -E '^[[:space:]]*-[[:space:]]*id:.*#[[:space:]]*ci:skip' "${cfg}" |
+            sed -E 's/^[[:space:]]*-[[:space:]]*id:[[:space:]]*([^[:space:]#]+).*/\1/' || true
+    )
+
+    if [[ ${#skipped_hooks[@]} -eq 0 ]]; then
+        echo "[INFO] No hooks with ci:skip found in ${cfg}"
+        return 0
+    fi
+
+    echo "[INFO] Disabling hooks with ci:skip..."
+    for hook_id in "${skipped_hooks[@]}"; do
+        echo "  - Removing hook: ${hook_id}"
+        yq -i "del(.repos[].hooks[] | select(.id == \"${hook_id}\"))" "${cfg}"
+    done
+
+    echo "[INFO] Updated ${cfg}"
+}
+
+#######################################
 #
 #######################################
 
@@ -299,6 +324,7 @@ fi
 
 #
 disable_ci_ignored_repos "${PRECOMMIT_CFG}"
+disable_ci_skipped_hooks "${PRECOMMIT_CFG_CI}"
 time python -m pre_commit install --config "${PRECOMMIT_CFG_CI}" --install-hooks -t pre-commit # don't install 'commit-msg'
 
 #
