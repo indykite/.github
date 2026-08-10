@@ -183,10 +183,95 @@ runs:
         TRIVY_CACHE_DIR: ${{ inputs.trivy_cache_dir }}
       run: |-
         # run/pre-commit
+        set -o pipefail
+
         PRE_COMMIT_ARGS=("--all-files" "--show-diff-on-failure" "--color=always" "--hook-stage" "pre-commit")
         if [[ ${IS_DEBUG} == "1" ]]; then
             PRE_COMMIT_ARGS+=("--verbose")
         fi
 
         # sanitize PRE_COMMIT_SKIP, remove any spaces
-        SKIP="${PRE_COMMIT_SKIP// /}" time python -m pre_commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}"
+        SKIP="${PRE_COMMIT_SKIP// /}" time python -m pre_commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}" 2>&1 | tee pre-commit-output.log
+        exit "${PIPESTATUS[0]}"
+
+    - name: pre-commit checks/summary
+      if: always() && steps.action-prep.outputs.PRE_COMMIT_RUN == '1' && github.event_name == 'pull_request'
+      shell: bash
+      run: |-
+        set -euo pipefail
+
+        OUTPUT_FILE="pre-commit-checks-summary.md"
+        LOG_FILE="pre-commit-output.log"
+
+        if [[ ! -f "${LOG_FILE}" ]]; then
+          {
+            echo '```text'
+            echo 'pre-commit output log unavailable'
+            echo '```'
+          } > "${OUTPUT_FILE}"
+          exit 0
+        fi
+
+        {
+          echo '```text'
+          # keep only per-hook status lines from pre-commit output, strip ANSI escapes,
+          # drop optional log timestamp prefixes, and add visual status markers.
+          awk '
+              BEGIN {
+                n = 0
+                max_hook = 0
+              }
+              {
+                line=$0
+                gsub(/\033\[[0-9;]*[A-Za-z]/, "", line)
+                gsub(/\r/, "", line)
+                sub(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^[:space:]]+[[:space:]]+/, "", line)
+                sub(/[[:space:]]+$/, "", line)
+
+                if (line ~ /(Passed|Failed|Skipped)[[:space:]]*$/) {
+                  status = ""
+                  if (line ~ /Passed[[:space:]]*$/) {
+                    status = "✅  Passed"
+                  } else if (line ~ /Failed[[:space:]]*$/) {
+                    status = "❌  Failed"
+                  } else if (line ~ /Skipped[[:space:]]*$/) {
+                    status = "⚠️ Skipped"
+                  }
+
+                  hook = line
+                  sub(/[[:space:]]*(Passed|Failed|Skipped)[[:space:]]*$/, "", hook)
+                  sub(/[.[:space:]]+$/, "", hook)
+                  gsub(/^[[:space:]]+|[[:space:]]+$/, "", hook)
+
+                  if (hook != "" && status != "") {
+                    n++
+                    hooks[n] = hook
+                    statuses[n] = status
+                    if (length(hook) > max_hook) {
+                      max_hook = length(hook)
+                    }
+                  }
+                }
+              }
+              END {
+                # Keep status column stable for vertical icon alignment.
+                target = max_hook + 8
+                for (i = 1; i <= n; i++) {
+                  row = hooks[i]
+                  while (length(row) < target) {
+                    row = row "."
+                  }
+                  printf("%s %s\n", row, statuses[i])
+                }
+              }
+            ' "${LOG_FILE}"
+          echo '```'
+        } > "${OUTPUT_FILE}" || true
+
+        if [[ "$(wc -l < "${OUTPUT_FILE}")" -le 2 ]]; then
+          {
+            echo '```text'
+            echo 'no hook summary lines found'
+            echo '```'
+          } > "${OUTPUT_FILE}"
+        fi

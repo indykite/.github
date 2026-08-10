@@ -13,7 +13,7 @@ on: # yamllint disable-line rule:truthy
   # This cache will then be consumable by both feature branches."
   # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#use-cache-across-feature-branches
   push:
-    branches: ["dev", "develop", "main", "master"]
+    branches: ["dev", "develop", "main", "master"] # not possible to reference $github.event.repository.default_branch directly
   schedule:
     # GitHub Actions does not support the non-standard syntax @monthly, @weekly, @daily, etc.
     - cron: "15 0 * * *" # daily at 00:15 UTC
@@ -63,6 +63,14 @@ jobs:
             ${{ vars.PRE_COMMIT_SKIP != null && ',' || '' }}${{ vars.PRE_COMMIT_SKIP }}
             ${{ format('{0}', github.event_name != 'pull_request' && ',pre-commit-autoupdate,no-commit-to-branch' || '' ) }}
 
+      - name: Write pre-commit summary
+        if: ${{ always() && github.event_name == 'pull_request' && hashFiles('pre-commit-checks-summary.md') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat pre-commit-checks-summary.md >> "${GITHUB_STEP_SUMMARY}"
+
   # renovate-validate:
   #   name: renovate-validate
   #   runs-on: ubuntu-latest
@@ -77,12 +85,36 @@ jobs:
       - name: trivy
         uses: indykite/.github/.github/actions/trivy@master
 
+      - name: Write trivy summary
+        if: ${{ always() && hashFiles('trivy-table.txt') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo '```text'
+            cat trivy-table.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   checkov:
     name: checkov
     runs-on: ubuntu-latest
     steps:
       - name: checkov
         uses: indykite/.github/.github/actions/checkov@master
+
+      - name: Write checkov summary
+        if: ${{ always() && hashFiles('checkov-summary.txt') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo '```text'
+            cat checkov-summary.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   terraform-validate:
     name: terraform-validate
