@@ -106,7 +106,7 @@ runs:
     - name: trivy/table
       shell: bash
       if: ${{ hashFiles('trivy-results.json') != '' }}
-      run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code 0 --format table trivy-results.json
+      run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code 0 --format table trivy-results.json | tee trivy-table.txt
 
     # ---- SARIF + GitHub Security tab upload (default branch only) ----
     # - name: trivy/sarif

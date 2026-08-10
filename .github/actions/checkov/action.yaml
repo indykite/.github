@@ -36,3 +36,35 @@ runs:
       with:
         config_file: ${{ steps.checkov_config.outputs.path }}
         output_format: cli
+        output_file_path: checkov-results.txt,
+
+    - name: checkov/summary
+      if: always() && steps.checkov_config.outputs.path
+      shell: bash
+      run: |-
+        set -euo pipefail
+
+        OUTPUT_FILE="checkov-summary.txt"
+        SOURCE_FILE="checkov-results.txt"
+
+        if [[ ! -f "${SOURCE_FILE}" ]]; then
+          printf '%s\n' "checkov output file not found" > "${OUTPUT_FILE}"
+          exit 0
+        fi
+
+        awk '
+          /^[[:space:]]*[A-Za-z0-9_ -]+ scan results:[[:space:]]*$/ {
+            print $0
+            while (getline > 0) {
+              if ($0 ~ /^[[:space:]]*Passed checks:/) {
+                print $0
+                print ""
+                break
+              }
+            }
+          }
+        ' "${SOURCE_FILE}" > "${OUTPUT_FILE}" || true
+
+        if [[ ! -s "${OUTPUT_FILE}" ]]; then
+          printf '%s\n' "no checkov summary lines found" > "${OUTPUT_FILE}"
+        fi
