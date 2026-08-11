@@ -71,7 +71,10 @@ find_py_project_file() {
 # ^3.14 => 3.14
 # >=3.14.1,<1.15 => 3.14.1
 normalize_python_version() {
-    grep -oE '[0-9]+(\.[0-9]+){0,2}' <<<"${1}" | head -n1
+    if [[ "${1}" =~ ([0-9]+(\.[0-9]+){0,2}) ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+    fi
+    return 0
 }
 
 python_version_from() {
