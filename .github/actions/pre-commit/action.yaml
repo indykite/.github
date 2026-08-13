@@ -12,7 +12,9 @@ inputs:
     required: false
     default: "10"
   github_token:
-    description: Github PAT
+    description: >-
+      Token exported to the hook run and used for the https insteadOf rewrite that fetches
+      private indykite repos; an ik-code-reader installation token or a PAT.
     required: false
     default: ""
   checkout_fetch_master:

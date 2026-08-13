@@ -49,12 +49,21 @@ jobs:
     name: pre-commit
     runs-on: ubuntu-latest
     steps:
+      - name: Mint ik-code-reader installation token
+        id: code_reader_token
+        if: ${{ github.event.pull_request.head.repo.fork != true }} # fork PRs cannot read the PEM
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0 - https://github.com/actions/create-github-app-token/releases
+        with:
+          client-id: ${{ vars.IK_CODE_READER_CLIENT_ID }}
+          private-key: ${{ secrets.IK_CODE_READER_PEM }}
+          owner: indykite
+
       - name: pre-commit
         # uses: ./.github/actions/pre-commit/action.yaml
         uses: indykite/.github/.github/actions/pre-commit@master
         with:
           # shared workflow; required to do ssh://git@github.com... from another repos
-          github_token: ${{ secrets.INDYKITEONE_PAT }}
+          github_token: ${{ steps.code_reader_token.outputs.token }}
           checkout_fetch_master: "${{ vars.GH_CHECKOUT_FETCH_MASTER }}"
           action_timeout: "${{ vars.PRE_COMMIT_ACTION_TIMEOUT != null && vars.PRE_COMMIT_ACTION_TIMEOUT || 10 }}" # in minutes
           # comma separated list of hook ids; exclude autoupdate and branch checks on scheduled runs for cache purposes
@@ -120,10 +129,19 @@ jobs:
     name: terraform-validate
     runs-on: ubuntu-latest
     steps:
+      - name: Mint ik-code-reader installation token
+        id: code_reader_token
+        if: ${{ github.event.pull_request.head.repo.fork != true }} # fork PRs cannot read the PEM
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0 - https://github.com/actions/create-github-app-token/releases
+        with:
+          client-id: ${{ vars.IK_CODE_READER_CLIENT_ID }}
+          private-key: ${{ secrets.IK_CODE_READER_PEM }}
+          owner: indykite
+
       - name: terraform-validate
         uses: indykite/.github/.github/actions/terraform-validate@master
         with:
           # changed files on PR (ruleset CI), full validation on cache-style non-PR runs
           changed_only: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
           exclude_dirs: docs,examples
-          github_token: ${{ secrets.INDYKITEONE_PAT }}
+          github_token: ${{ steps.code_reader_token.outputs.token }}
