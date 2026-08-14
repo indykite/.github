@@ -12,7 +12,7 @@ inputs:
     required: false
     default: "true"
   release_bot:
-    description: Release bot username
+    description: Release bot username, or a comma-separated list of usernames without spaces
     required: false
     default: ""
 
@@ -24,7 +24,7 @@ runs:
 
     - name: commitlint config file
       id: commitlint-conf
-      if: github.actor != inputs.release_bot
+      if: ${{ !contains(format(',{0},', inputs.release_bot), format(',{0},', github.actor)) }}
       shell: bash
       run: |
         echo "Searching for commitlint config..."
@@ -40,7 +40,7 @@ runs:
 
     - name: commitlint
       uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1 - https://github.com/wagoid/commitlint-github-action/tags
-      if: github.actor != inputs.release_bot
+      if: ${{ !contains(format(',{0},', inputs.release_bot), format(',{0},', github.actor)) }}
       env:
         RELEASE_BOT: "${{ inputs.release_bot }}"
       with:
