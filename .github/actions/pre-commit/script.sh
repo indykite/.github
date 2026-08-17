@@ -119,7 +119,11 @@ disable_ci_skipped_hooks() {
 #
 #######################################
 
-git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/indykite/".insteadOf "ssh://git@github.com/indykite/"
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/indykite/".insteadOf "ssh://git@github.com/indykite/"
+else
+    echo "[INFO] GITHUB_TOKEN empty (fork run?), skipping insteadOf rewrite"
+fi
 
 # pre-create the directory so npm commands don't fail
 mkdir -p "${NPM_PREFIX}/lib/node_modules"
