@@ -40,6 +40,13 @@ inputs:
       If set to '0', Buildx setup is skipped and only Docker login is performed.
     required: false
     default: "1"
+  docker-multi-arch-build:
+    description: >-
+      Flag to setup QEMU for multi-architecture (e.g. amd64 + arm64) Docker builds. Disabled by default.
+      If set to '1', QEMU emulation is set up in addition to Buildx, so images can be built for
+      architectures other than the runner's native one. Requires docker-buildx-setup to also be enabled.
+    required: false
+    default: "0"
 
 runs:
   using: composite
@@ -65,11 +72,15 @@ runs:
         username: ${{ inputs.dockerhub-username }}
         password: ${{ inputs.dockerhub-token }}
 
+    #
+    # https://docs.docker.com/build/ci/github-actions/multi-platform/
+    #
+    - name: docker/setup-qemu
+      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0 - https://github.com/docker/setup-qemu-action/releases
+      if: ${{ inputs.docker-buildx-setup == '1' && inputs.docker-multi-arch-build == '1' }}
+
     - name: docker/setup-buildx
       uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0 - https://github.com/docker/setup-buildx-action/releases
-      #      # https://docs.docker.com/build/ci/github-actions/multi-platform/
-      #    - name: Set up QEMU
-      #      uses: docker/setup-qemu-action@v2
       if: ${{ inputs.docker-buildx-setup == '1' }}
 
     - name: gcloud/configure-docker
