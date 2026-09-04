@@ -40,13 +40,13 @@ inputs:
       If set to '0', Buildx setup is skipped and only Docker login is performed.
     required: false
     default: "1"
-  docker-multi-arch-build:
+  platforms:
     description: >-
-      Flag to setup QEMU for multi-architecture (e.g. amd64 + arm64) Docker builds. Disabled by default.
-      If set to '1', QEMU emulation is set up in addition to Buildx, so images can be built for
-      architectures other than the runner's native one. Requires docker-buildx-setup to also be enabled.
+      Comma separated list of target platforms for multi-platform build, e.g. 'linux/amd64,linux/arm64'.
+      QEMU is set up automatically (in addition to Buildx) whenever more than one platform is given,
+      or the single given platform differs from the runner's native one.
     required: false
-    default: "0"
+    default: "linux/amd64"
 
 runs:
   using: composite
@@ -74,10 +74,47 @@ runs:
 
     #
     # https://docs.docker.com/build/ci/github-actions/multi-platform/
+    # Detect whether QEMU (multi-arch emulation) is needed: more than one target platform,
+    # or the single target platform doesn't match the runner's native one.
     #
+    - name: docker/detect-multi-arch
+      id: detect-multi-arch
+      shell: bash
+      env:
+        PLATFORMS: ${{ inputs.platforms }}
+        RUNNER_OS_CTX: ${{ runner.os }}
+        RUNNER_ARCH_CTX: ${{ runner.arch }}
+      run: |-
+        set -euo pipefail
+
+        case "$RUNNER_OS_CTX" in
+          Linux) NATIVE_OS="linux" ;;
+          Windows) NATIVE_OS="windows" ;;
+          macOS) NATIVE_OS="darwin" ;;
+          *) NATIVE_OS="linux" ;;
+        esac
+
+        case "$RUNNER_ARCH_CTX" in
+          X64) NATIVE_ARCH="amd64" ;;
+          X86) NATIVE_ARCH="386" ;;
+          ARM64) NATIVE_ARCH="arm64" ;;
+          ARM) NATIVE_ARCH="arm" ;;
+          *) NATIVE_ARCH="amd64" ;;
+        esac
+        NATIVE_PLATFORM="${NATIVE_OS}/${NATIVE_ARCH}"
+
+        IFS=',' read -ra PLATFORM_LIST <<<"$PLATFORMS"
+        MULTI_ARCH="0"
+        if [[ "${#PLATFORM_LIST[@]}" -gt 1 ]]; then
+          MULTI_ARCH="1"
+        elif [[ "$(echo "${PLATFORM_LIST[0]}" | xargs)" != "$NATIVE_PLATFORM" ]]; then
+          MULTI_ARCH="1"
+        fi
+        echo "MULTI_ARCH=${MULTI_ARCH}" >> "$GITHUB_OUTPUT"
+
     - name: docker/setup-qemu
       uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0 - https://github.com/docker/setup-qemu-action/releases
-      if: ${{ inputs.docker-buildx-setup == '1' && inputs.docker-multi-arch-build == '1' }}
+      if: ${{ inputs.docker-buildx-setup == '1' && steps.detect-multi-arch.outputs.MULTI_ARCH == '1' }}
 
     - name: docker/setup-buildx
       uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0 - https://github.com/docker/setup-buildx-action/releases

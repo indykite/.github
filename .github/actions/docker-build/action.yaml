@@ -71,13 +71,6 @@ inputs:
     description: Comma separated list of target platforms for multi-platform build
     required: false
     default: "linux/amd64" # "linux/amd64,linux/arm64"
-  docker-multi-arch-build:
-    description: >-
-      Flag to setup QEMU for multi-architecture (e.g. amd64 + arm64) Docker builds. Disabled by default.
-      Set to '1' together with a multi-platform 'platforms' value (e.g. 'linux/amd64,linux/arm64')
-      to build for architectures other than the runner's native one.
-    required: false
-    default: "0"
   build-args:
     description: >-
       JSON string of extra build-args to pass to Docker, e.g. '{"FOO":"bar","BAZ":"quux"}'.
@@ -201,7 +194,7 @@ runs:
         docker-repository-hostname: ${{ steps.setup-action.outputs.DOCKER_REPOSITORY_HOSTNAME }}
         dockerhub-username: ${{ inputs.dockerhub-username }}
         dockerhub-token: ${{ inputs.dockerhub-token }}
-        docker-multi-arch-build: ${{ inputs.docker-multi-arch-build }}
+        platforms: ${{ inputs.platforms }}
 
     #
     # Build and push Docker image
