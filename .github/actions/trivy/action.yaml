@@ -35,6 +35,14 @@ inputs:
     description: Trivy exit code when vulnerabilities are found (for example '0' to not fail, '1' to fail).
     required: false
     default: '1'
+  license-scan:
+    description: Optional Trivy license scanning and reporting. Enabled by default.
+    required: false
+    default: 'true'
+  license-format:
+    description: "LICENSES report format: 'md' (default) or 'txt'."
+    required: false
+    default: 'md'
 
 runs:
   using: composite
@@ -104,8 +112,8 @@ runs:
 
     # ---- Table: always printed to CI logs for clear human-readable visibility ----
     - name: trivy/table
-      shell: bash
       if: ${{ hashFiles('trivy-results.json') != '' }}
+      shell: bash
       run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code 0 --format table trivy-results.json | tee trivy-table.txt
 
     # ---- SARIF + GitHub Security tab upload (default branch only) ----
@@ -142,11 +150,19 @@ runs:
       run: trivy convert ${{ steps.init.outputs.config_arg }} --exit-code 0 --format github --output dependency-results.sbom.json trivy-results.json
 
     - name: trivy/upload-sbom
-      if: ${{ github.ref_name == github.event.repository.default_branch && hashFiles('dependency-results.sbom.json') != '' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 - https://github.com/actions/upload-artifact/releases
+      if: ${{ github.ref_name == github.event.repository.default_branch && hashFiles('dependency-results.sbom.json') != '' }}
       with:
         name: ${{ steps.artifact.outputs.name }}
         path: ${{ github.workspace }}/dependency-results.sbom.json
+
+    # ---- License scanning: separate invocation, produces/validates the committed LICENSES report ----
+    # (fs scans only: license scanning applies to the source tree, not to built container images)
+    - name: trivy/license
+      uses: indykite/.github/.github/actions/trivy-license@master
+      if: ${{ inputs.scan-type == 'fs' && inputs.license-scan != 'false' }}
+      with:
+        format: ${{ inputs.license-format }}
 
     # ---- Apply the caller's failure policy after report generation and uploads complete ----
     - name: trivy/fail-on-findings

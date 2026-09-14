@@ -32,7 +32,7 @@ runs:
 
     - name: checkov
       if: steps.checkov_config.outputs.path
-      uses: bridgecrewio/checkov-action@f967808197a8d784d3e72919f38c3ff0cda7884e # v12.3122.0 - https://github.com/bridgecrewio/checkov-action/releases
+      uses: bridgecrewio/checkov-action@a8664e3a0549367977f0cda990a34311835c87c0 # v12.3123.0 - https://github.com/bridgecrewio/checkov-action/releases
       with:
         config_file: ${{ steps.checkov_config.outputs.path }}
         output_format: cli

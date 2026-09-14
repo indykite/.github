@@ -192,8 +192,10 @@ runs:
             PRE_COMMIT_ARGS+=("--verbose")
         fi
 
-        # sanitize PRE_COMMIT_SKIP, remove any spaces
-        SKIP="${PRE_COMMIT_SKIP// /}" time python -m pre_commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}" 2>&1 | tee pre-commit-output.log
+        # sanitize PRE_COMMIT_SKIP, remove any spaces or newlines
+        SKIP="$(echo -n "${PRE_COMMIT_SKIP:-}" | tr -d '[:space:]')"
+        export SKIP
+        time python -m pre_commit run --config .pre-commit-config-ci.yaml "${PRE_COMMIT_ARGS[@]}" 2>&1 | tee pre-commit-output.log
         exit "${PIPESTATUS[0]}"
 
     - name: pre-commit checks/summary

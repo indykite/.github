@@ -1,0 +1,95 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+#
+# Prerequisite: the 'trivy' CLI must already be on PATH (the 'trivy' composite action, this
+# action's only intended caller, sets it up via 'aquasecurity/trivy-action' beforehand).
+#
+# Trivy license scanning + LICENSES report generation.
+#
+# Runs 'trivy fs --scanners license' against the repository root (ignoring vendored/downloaded
+# dependency directories, e.g. locally-installed Terraform modules), and renders a LICENSES
+# report (Markdown or plain text) with a license-usage summary at the top.
+#
+# The report is expected to be committed to the repo. This action fails the job when the
+# generated report differs from the committed one, so any dependency-license change is always
+# reviewed by a human before merge. It does NOT enforce allowed/forbidden licenses (see the
+# repo's own '.trivy.yaml' 'license:' section for that, tracked separately from this action).
+#
+# reproducible between a developer machine and a clean CI checkout for npm/yarn/pnpm and
+# pip/pipenv/poetry-based packages: these lockfiles carry no license metadata of their own, so
+# Trivy needs the actual dependency tree installed (node_modules / a virtualenv) to detect
+# anything. For Python specifically, installing the venv is not even enough on its own -- most
+# wheels only carry a 'License:' classifier, not a bundled license file, so Trivy's confidence-
+# based matcher still finds almost nothing (verified: 81 packages installed, 1 detected). Go is
+# already fixed via 'go mod download' (module source ships with real LICENSE files). Re-enable
+# the default once JS/Python coverage is addressed (or accepted as a permanent gap).
+#
+# 'script.sh' is designed to run identically in CI and on a developer's machine: it auto-detects
+# the repository root and an optional '.trivy.yaml' config, so a dev can simply run
+# '.github/actions/trivy-license/script.sh' (with 'trivy' on PATH) to refresh the report locally.
+#
+name: trivy-license
+description: >-
+  Runs Trivy license scanning against the repository filesystem and generates/validates a
+  LICENSES report of 3rd-party dependency licenses.
+
+inputs:
+  format:
+    description: "Report format: 'md' (default) or 'txt'."
+    required: false
+    default: 'md'
+  fail-on-diff:
+    description: >-
+      Fail the step when the generated report differs from the committed one. FIXME (ENG-9724):
+      defaults to 'false' until the report is reliably reproducible in a clean CI checkout.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: trivy-license/generate-report
+      shell: bash
+      env:
+        REPORT_FORMAT: ${{ inputs.format }}
+      run: ${{ github.action_path }}/script.sh
+
+    - name: trivy-license/check-diff
+      if: ${{ inputs.fail-on-diff == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        report_file="LICENSES.${{ inputs.format }}"
+        if [[ ! -f "${report_file}" ]]; then
+          # no 3rd-party licenses were detected this run: only a problem if a report was
+          # previously committed (i.e. dependencies with licenses existed, now removed)
+          if git ls-files --error-unmatch "${report_file}" >/dev/null 2>&1; then
+            echo "::error title=trivy-license::${report_file} is committed but no licenses were detected this run. Remove it and commit the removal."
+            exit 1
+          fi
+          echo "no 3rd-party licenses detected; nothing to check."
+          exit 0
+        fi
+        # untracked report (first run, never committed) is also a failure: it must be committed
+        if git status --porcelain -- "${report_file}" | grep -q '^??'; then
+          echo "::error title=trivy-license::${report_file} is not committed yet. Run '.github/actions/trivy-license/script.sh' locally and commit it."
+          exit 1
+        fi
+        # ignore the 'Generated at:' line: it changes on every run and would otherwise always fail this check
+        ignore_timestamp='/^Generated at: /d'
+        if ! diff -q <(git show "HEAD:${report_file}" | sed "${ignore_timestamp}") <(sed "${ignore_timestamp}" "${report_file}") >/dev/null; then
+          echo "::error title=trivy-license::${report_file} is out of date. Run '.github/actions/trivy-license/script.sh' locally and commit the changes."
+          diff <(git show "HEAD:${report_file}" | sed "${ignore_timestamp}") <(sed "${ignore_timestamp}" "${report_file}") || true
+          exit 1
+        fi
+        echo "${report_file} is up to date."
+
+    - name: trivy-license/upload-report
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 - https://github.com/actions/upload-artifact/releases
+      if: ${{ always() && hashFiles(format('LICENSES.{0}', inputs.format)) != '' }}
+      with:
+        name: trivy-license-report
+        path: LICENSES.${{ inputs.format }}
