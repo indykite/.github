@@ -3,7 +3,6 @@
 # DO NOT EDIT!!!
 # Managed by GitHub Actions
 #
-#
 # Prerequisite: the 'trivy' CLI must already be on PATH (the 'trivy' composite action, this
 # action's only intended caller, sets it up via 'aquasecurity/trivy-action' beforehand).
 #

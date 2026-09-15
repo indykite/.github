@@ -3,7 +3,6 @@
 # DO NOT EDIT!!!
 # Managed by GitHub Actions
 #
-#
 # Prerequisites:
 #   - 'actions/checkout' must be called prior to this action to fetch the repository
 #   - 'permissions.id-token: write' must be set in the workflow using this action if calling 'docker-setup' sub-action here,
