@@ -3,7 +3,6 @@
 # DO NOT EDIT!!!
 # Managed by GitHub Actions
 #
-#
 # generate a LICENSES.(md|txt) report of 3rd-party dependency licenses via
 # 'trivy fs --scanners license'.
 #

@@ -80,6 +80,7 @@ if [[ "${INPUT_CHANGED_ONLY:-false}" == "true" ]]; then
             [[ "${file}" == *"/.terraform/"* ]] && continue
             [[ "${file}" == *"/.terragrunt-cache/"* ]] && continue
             dir="$(dirname "${file}")"
+            [[ ! -d "${dir}" ]] && continue
             if is_excluded_dir "${dir}"; then
                 continue
             fi
