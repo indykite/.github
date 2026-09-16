@@ -135,6 +135,16 @@ if command -v pipenv >/dev/null 2>&1; then
     done < <(find "${REPO_ROOT}" \( -path '*/.git' -o -path '*/.terraform' -o -path '*/.terragrunt-cache' -o -path '*/.venv' \) -prune -o -name Pipfile -print0 || true)
 fi
 
+# uv resolves and installs project dependencies into an in-project '.venv'. Only synchronize
+# projects with a committed lockfile so report generation remains deterministic.
+if command -v uv >/dev/null 2>&1; then
+    while IFS= read -r -d '' uv_lock; do
+        uv_dir="$(dirname "${uv_lock}")"
+        echo "uv.lock found in ${uv_dir#"${REPO_ROOT}"/}, running 'uv sync --frozen --no-dev'..."
+        (cd "${uv_dir}" && uv sync --frozen --no-dev) || echo "warning: 'uv sync' failed in ${uv_dir}, uv license detection may be incomplete" >&2
+    done < <(find "${REPO_ROOT}" \( -path '*/.git' -o -path '*/.terraform' -o -path '*/.terragrunt-cache' -o -path '*/.venv' \) -prune -o -name uv.lock -print0 || true)
+fi
+
 # Yarn lockfiles provide the dependency graph, but license discovery needs the package source
 # and its license files under 'node_modules'. Install exactly the locked dependencies without
 # allowing Yarn to update the lockfile.
