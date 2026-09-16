@@ -3,7 +3,6 @@
 # DO NOT EDIT!!!
 # Managed by GitHub Actions
 #
-#
 # Prerequisites (calling job must declare these permissions):
 #   - 'permissions.security-events: write'  -- required by 'github/codeql-action/upload-sarif' (SARIF upload, master only)
 #   - 'permissions.actions: write'          -- required by 'actions/upload-artifact' (SBOM upload, fs + master only)

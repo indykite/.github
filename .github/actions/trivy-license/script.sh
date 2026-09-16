@@ -3,7 +3,6 @@
 # DO NOT EDIT!!!
 # Managed by GitHub Actions
 #
-#
 # generate a LICENSES.(md|txt) report of 3rd-party dependency licenses via
 # 'trivy fs --scanners license'.
 #
@@ -134,6 +133,17 @@ if command -v pipenv >/dev/null 2>&1; then
         # or rewrites it -- this is a read-only scan, not a dependency update.
         (cd "${pipfile_dir}" && PIPENV_VENV_IN_PROJECT=1 pipenv sync --dev) || echo "warning: 'pipenv sync' failed in ${pipfile_dir}, Python license detection may be incomplete" >&2
     done < <(find "${REPO_ROOT}" \( -path '*/.git' -o -path '*/.terraform' -o -path '*/.terragrunt-cache' -o -path '*/.venv' \) -prune -o -name Pipfile -print0 || true)
+fi
+
+# Yarn lockfiles provide the dependency graph, but license discovery needs the package source
+# and its license files under 'node_modules'. Install exactly the locked dependencies without
+# allowing Yarn to update the lockfile.
+if command -v yarn >/dev/null 2>&1; then
+    while IFS= read -r -d '' yarn_lock; do
+        yarn_dir="$(dirname "${yarn_lock}")"
+        echo "yarn.lock found in ${yarn_dir#"${REPO_ROOT}"/}, running 'yarn install --frozen-lockfile'..."
+        (cd "${yarn_dir}" && yarn install --frozen-lockfile --ignore-engines) || echo "warning: 'yarn install' failed in ${yarn_dir}, Yarn license detection may be incomplete" >&2
+    done < <(find "${REPO_ROOT}" \( -path '*/.git' -o -path '*/.terraform' -o -path '*/.terragrunt-cache' -o -path '*/node_modules' \) -prune -o -name yarn.lock -print0 || true)
 fi
 
 REPORT_FORMAT="${REPORT_FORMAT:-md}" # md (default) or txt
