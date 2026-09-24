@@ -17,6 +17,7 @@ on: # yamllint disable-line rule:truthy
   schedule:
     # GitHub Actions does not support the non-standard syntax @monthly, @weekly, @daily, etc.
     - cron: "15 0 * * *" # daily at 00:15 UTC
+  workflow_dispatch: {} # allows manually re-running this workflow from any branch for testing
 #
 # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions
 # "all of those that are not specified are set to none."
@@ -93,6 +94,12 @@ jobs:
     steps:
       - name: trivy
         uses: indykite/.github/.github/actions/trivy@master
+        with:
+          # PR: use the repo's own '.trivy.yaml' (vuln disabled by default there).
+          # push/schedule: enforce 'vuln' explicitly for the 'trivy-notify' Slack/flow.
+          scanners: ${{ github.event_name != 'pull_request' && 'vuln,secret,misconfig,license' || '' }}
+          slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
+          -api-token: ${{ secrets.JIRA_API_TOKEN }}
 
       - name: Write trivy summary
         if: ${{ always() && hashFiles('trivy-table.txt') != '' }}

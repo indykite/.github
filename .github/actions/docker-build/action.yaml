@@ -230,5 +230,8 @@ runs:
       with:
         scan-type: image
         image-ref: ${{ steps.setup-action.outputs.DOCKER_IMAGE_URI }}:${{ inputs.docker-image-tag }}
+        # image scans have no '.trivy.yaml'-driven default (that config targets 'fs' scans), so
+        # the full scanner set must be requested explicitly here
+        scanners: vuln,secret,misconfig
         trivy-db-force-update: ${{ inputs.trivy-db-force-update }}
         exit-code: ${{ inputs.trivy-exit-code }}
