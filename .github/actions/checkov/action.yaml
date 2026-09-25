@@ -36,7 +36,7 @@ runs:
       with:
         config_file: ${{ steps.checkov_config.outputs.path }}
         output_format: cli
-        output_file_path: checkov-results.txt,
+        output_file_path: checkov-results.txt
 
     - name: checkov/summary
       if: always() && steps.checkov_config.outputs.path
