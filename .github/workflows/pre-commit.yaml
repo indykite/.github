@@ -99,7 +99,7 @@ jobs:
           # push/schedule: enforce 'vuln' explicitly for the 'trivy-notify' Slack/flow.
           scanners: ${{ github.event_name != 'pull_request' && 'vuln,secret,misconfig,license' || '' }}
           slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
-          -api-token: ${{ secrets.JIRA_API_TOKEN }}
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
 
       - name: Write trivy summary
         if: ${{ always() && hashFiles('trivy-table.txt') != '' }}

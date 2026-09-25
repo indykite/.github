@@ -55,7 +55,7 @@ inputs:
       context directly, so this must be passed explicitly to enable the 'trivy-notify' Slack/flow.
     required: false
     default: ''
-  -api-token:
+  jira-api-token:
     description: Cloud API token for the dedicated Trivy service account, e.g. secrets.JIRA_API_TOKEN.
     required: false
     default: ''
@@ -254,4 +254,4 @@ runs:
         contains(steps.init.outputs.scanners, 'vuln') && hashFiles('trivy-results.json') != '' }}
       with:
         slack-bot-token: ${{ inputs.slack-bot-token }}
-        -api-token: ${{ inputs.-api-token }}
+        jira-api-token: ${{ inputs.jira-api-token }}
