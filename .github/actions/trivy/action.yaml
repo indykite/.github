@@ -224,7 +224,7 @@ runs:
       env:
         DIFF_AWARE: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
         EXIT_CODE: ${{ inputs.exit-code }}
-      run: |
+      run: |-
         set -euo pipefail
 
         CHANGED_FILES='[]'
@@ -244,14 +244,3 @@ runs:
         if [[ "${BLOCKING_COUNT}" -gt 0 ]]; then
           exit "${EXIT_CODE}"
         fi
-
-    # Slack + notifications for new CVEs: only once a repo-wide 'vuln' scan is enabled.
-    - name: trivy/notify
-      uses: indykite/.github/.github/actions/trivy-notify@master
-      if: >-
-        ${{ always() &&
-        github.event_name != 'pull_request' &&
-        contains(steps.init.outputs.scanners, 'vuln') && hashFiles('trivy-results.json') != '' }}
-      with:
-        slack-bot-token: ${{ inputs.slack-bot-token }}
-        -api-token: ${{ inputs.-api-token }}
