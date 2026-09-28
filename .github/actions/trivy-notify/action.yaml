@@ -1,0 +1,165 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+# Scheduled trivy vulnerability notifications (Slack + Jira).
+#
+# Intended caller: the 'trivy' composite action already ran (produced 'trivy-results.json' in
+# the workspace) with a repo-wide (non diff-filtered) scan, i.e. on a 'schedule' (or 'push' to
+# the default branch) trigger -- never on 'pull_request' (see 'trivy/action.yaml' failure
+# policy: vulnerabilities never block a PR, they are only surfaced here).
+#
+# "New" vulnerability = any entry present in the normal 'Results[].Vulnerabilities' of a scan
+# run with 'ignorefile: .trivyignore.yaml' configured (see repo '.trivy.yaml'): trivy itself
+# already excludes anything listed there, so nothing extra needs to be tracked/diffed here.
+#
+# On any new vulnerability: create a Jira issue through the Jira Cloud REST API using the
+# dedicated service-account token, then append an ignore-file entry per CVE (statement includes
+# the returned Jira issue key, a UTC timestamp, and the run URL -- see 'apply-ignorefile.sh') and
+# commit it to the default branch,
+# so the same CVE is not re-notified/re-ticketed on the next scheduled run. A human removes the
+# entry manually once the CVE is actually resolved or permanently accepted. The Slack summary is
+# posted independently of the Jira call's outcome (a Jira/Slack outage never fails the scan).
+#
+# Per-repo Slack channel/mention and Jira project/team/labels are read from the calling repo's
+# own '.trivy.yaml', under a 'notify:' key that trivy itself ignores (verified: unknown
+# top-level config keys do not affect trivy's own parsing). Falls back to the org-wide defaults
+# (see 'script.sh') when the repo has no 'notify:' section (or a sub-key is absent).
+#
+name: trivy-notify
+description: Posts Slack + Jira notifications for new Trivy vulnerabilities found on a scheduled/push scan.
+
+inputs:
+  slack-bot-token:
+    description: >-
+      Slack bot token (chat.postMessage), e.g. secrets.SLACK_BOT_TOKEN. Composite actions
+      cannot read the 'secrets' context directly, so the caller must pass this explicitly.
+    required: true
+  jira-api-token:
+    description: >-
+      Jira Cloud API token for the dedicated Trivy service account, e.g. secrets.JIRA_API_TOKEN.
+      The token must have Jira issue creation permission in the configured project.
+    required: true
+  github-token:
+    description: Token used to commit the updated '.trivyignore.yaml' back to the default branch
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: trivy-notify/find-new-cves
+      id: find
+      shell: bash
+      env:
+        # org-wide defaults, used when the repo's '.trivy.yaml' has no 'notify:' override.
+        # Literal, not 'vars.*': composite actions can't reference the 'vars' context (same
+        # restriction as 'secrets') -- confirmed at runtime: "Unrecognized named-value: 'vars'".
+        DEFAULT_SLACK_CHANNEL: '#ops-notifications'
+        DEFAULT_SLACK_MENTION: '@dev-sec-ops'
+        DEFAULT_JIRA_PROJECT: 'ENG'
+        DEFAULT_JIRA_TEAM: 'DSO'
+        DEFAULT_JIRA_LABELS: 'secops'
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        RUN_ID: ${{ github.run_id }}
+        REPO: ${{ github.repository }}
+      run: ${{ github.action_path }}/script.sh
+
+    - name: trivy-notify/jira-create
+      id: jira_create
+      if: ${{ steps.find.outputs.new_count > 0 }}
+      continue-on-error: true # a Jira outage must never fail the scheduled scan (falls back below)
+      shell: bash
+      env:
+        JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_PAYLOAD: ${{ steps.find.outputs.jira_payload }}
+      run: |-
+        set -euo pipefail
+
+        API_URL="https://api.atlassian.com/ex/jira/b5e52b9c-3a24-41f6-bf37-38d31606410e/rest/api/3/issue"
+        CREATE_PAYLOAD="$(jq -c '{fields: .fields}' <<<"${JIRA_PAYLOAD}")"
+        RESPONSE="$(curl -sS -w '\n%{http_code}' \
+          -X POST \
+          -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+          -H 'Accept: application/json' \
+          -H 'Content-Type: application/json' \
+          -d "${CREATE_PAYLOAD}" \
+          "${API_URL}")"
+
+        HTTP_STATUS_CODE="$(printf '%s' "${RESPONSE}" | tail -n1)"
+        HTTP_BODY="$(printf '%s' "${RESPONSE}" | sed '$d')"
+        ISSUE_KEY="$(jq -r '.key // empty' <<<"${HTTP_BODY}" 2>/dev/null || true)"
+        RESPONSE_BODY='{}'
+        if [[ -n "${ISSUE_KEY}" ]]; then
+          RESPONSE_BODY="$(jq -cn --arg issue_key "${ISSUE_KEY}" '{created: [{issue_key: $issue_key}]}')"
+        fi
+
+        {
+          echo 'body<<JIRA_API_CREATE_EOF'
+          echo "${RESPONSE_BODY}"
+          echo 'JIRA_API_CREATE_EOF'
+        } >>"${GITHUB_OUTPUT}"
+
+        if [[ "${HTTP_STATUS_CODE}" != 2[0-9][0-9] || -z "${ISSUE_KEY}" ]]; then
+          echo "Jira issue creation failed (HTTP/${HTTP_STATUS_CODE})" >&2
+          echo "${HTTP_BODY}" >&2
+          exit 1
+        fi
+
+    # ---- Runs after the Jira API call so the ignore-file statement can reference the actual
+    #      created issue key (see 'apply-ignorefile.sh' for the response contract). 'always()':
+    #      Slack still reports the alert if Jira is unavailable, while CVEs remain unsuppressed
+    #      without an issue key. ----
+    - name: trivy-notify/apply-ignorefile
+      id: apply_ignorefile
+      if: ${{ always() && steps.find.outputs.new_count > 0 }}
+      shell: bash
+      env:
+        IGNOREFILE: ${{ steps.find.outputs.ignorefile }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        JIRA_PROJECT: ${{ steps.find.outputs.jira_project }}
+        JIRA_TEAM: ${{ steps.find.outputs.jira_team }}
+        SLACK_TEXT: ${{ steps.find.outputs.slack_text }}
+        JIRA_RESPONSE_BODY: ${{ steps.jira_create.outputs.body }}
+      run: ${{ github.action_path }}/apply-ignorefile.sh
+
+    # 'always()': a Jira API failure must never suppress the Slack alert.
+    - name: trivy-notify/slack-notify
+      uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0 - https://github.com/slackapi/slack-github-action/releases
+      if: ${{ always() && steps.find.outputs.new_count > 0 }}
+      continue-on-error: true # a Slack outage must never fail the scheduled scan
+      with:
+        token: ${{ inputs.slack-bot-token }}
+        method: chat.postMessage
+        payload: |-
+          {
+            "channel": "${{ steps.find.outputs.slack_channel }}",
+            "text": ${{ toJson(steps.apply_ignorefile.outputs.slack_text) }}
+          }
+
+    - name: trivy-notify/commit-trivyignore
+      if: ${{ always() && steps.find.outputs.new_count > 0 }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |-
+        set -euo pipefail
+
+        IGNOREFILE="${{ steps.find.outputs.ignorefile }}"
+
+        # '.trivy.yaml' is only touched on the very first suppressed CVE (see 'apply-ignorefile.sh'),
+        # to enable its 'ignorefile:' key -- commit it alongside when that happened.
+        if git diff --quiet -- "${IGNOREFILE}" .trivy.yaml; then
+          echo "no ${IGNOREFILE}/.trivy.yaml changes to commit"
+          exit 0
+        fi
+
+        git config user.name "ik-code-writer[bot]"
+        git config user.email "ik-code-writer[bot]@users.noreply.github.com"
+        git add "${IGNOREFILE}" .trivy.yaml
+
+        TICKETS="${{ steps.apply_ignorefile.outputs.created_issue_keys }}"
+        git commit -m "ci: suppress ${{ steps.find.outputs.new_count }} new trivy CVE(s) pending remediation" \
+          -m "${TICKETS:-no Jira ticket reference returned, see run URL in .trivyignore.yaml}"
+        git push origin "HEAD:${{ github.ref_name }}"
