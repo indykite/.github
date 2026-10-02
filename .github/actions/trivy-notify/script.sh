@@ -137,6 +137,9 @@ JIRA_PAYLOAD="$(
                          fields: {
                              project: {key: $project},
                              issuetype: {name: "Vulnerability"},
+                             parent: {key: "ENG-7620"},
+                             priority: {id: "2"},
+                             customfield_10034: 1,
                              summary: $summary,
                              labels: $labels,
                              customfield_10041: {value: $team},
