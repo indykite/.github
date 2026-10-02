@@ -17,10 +17,14 @@
 # On any new vulnerability: create a Jira issue through the Jira Cloud REST API using the
 # dedicated service-account token, then append an ignore-file entry per CVE (statement includes
 # the returned Jira issue key, a UTC timestamp, and the run URL -- see 'apply-ignorefile.sh') and
-# commit it to the default branch,
-# so the same CVE is not re-notified/re-ticketed on the next scheduled run. A human removes the
-# entry manually once the CVE is actually resolved or permanently accepted. The Slack summary is
-# posted independently of the Jira call's outcome (a Jira/Slack outage never fails the scan).
+# open a PR from a dedicated bot branch. Auto-merge is enabled, but GitHub merges only after the
+# repository's required checks pass. A human removes the entry manually once the CVE is actually
+# resolved or permanently accepted. The Slack summary is posted independently of the Jira call's
+# outcome (a Jira/Slack outage never fails the scan).
+#
+# The caller passes the non-secret App client ID and organization-visible private key. This action mints
+# a repo-scoped installation token only after a Jira-confirmed CVE is found, so the resulting PR
+# triggers the repository's required checks without minting a token on routine scans.
 #
 # Per-repo Slack channel/mention and Jira project/team/labels are read from the calling repo's
 # own '.trivy.yaml', under a 'notify:' key that trivy itself ignores (verified: unknown
@@ -41,10 +45,14 @@ inputs:
       Jira Cloud API token for the dedicated Trivy service account, e.g. secrets.JIRA_API_TOKEN.
       The token must have Jira issue creation permission in the configured project.
     required: true
-  github-token:
-    description: Token used to commit the updated '.trivyignore.yaml' back to the default branch
+  github-app-client-id:
+    description: Non-secret ik-code-writer App client ID.
     required: false
-    default: ${{ github.token }}
+    default: ''
+  github-app-private-key:
+    description: Organization-visible ik-code-writer App private key; handle as a secret.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -138,28 +146,54 @@ runs:
             "text": ${{ toJson(steps.apply_ignorefile.outputs.slack_text) }}
           }
 
-    - name: trivy-notify/commit-trivyignore
-      if: ${{ always() && steps.find.outputs.new_count > 0 }}
+    - name: trivy-notify/mint-github-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0 - https://github.com/actions/create-github-app-token/releases
+      id: code_writer_token
+      if: >-
+        ${{ steps.apply_ignorefile.outputs.jira_confirmed == 'true' &&
+        inputs.github-app-client-id != '' && inputs.github-app-private-key != '' }}
+      continue-on-error: true
+      with:
+        client-id: ${{ inputs.github-app-client-id }}
+        private-key: ${{ inputs.github-app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+        permission-pull-requests: write
+
+    - name: trivy-notify/warn-pr-token-unavailable
+      if: ${{ steps.apply_ignorefile.outputs.jira_confirmed == 'true' && steps.code_writer_token.outputs.token == '' }}
+      shell: bash
+      run: echo "::warning::Could not mint an ik-code-writer token; Trivy suppressions were not opened as a PR"
+
+    - name: trivy-notify/open-ignorefile-pr
+      uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1 - https://github.com/peter-evans/create-pull-request/releases
+      id: ignorefile_pr
+      if: ${{ steps.code_writer_token.outputs.token != '' }}
+      with:
+        token: ${{ steps.code_writer_token.outputs.token }}
+        branch: automation/trivy-ignorefile
+        base: ${{ github.ref_name }}
+        title: "ci: suppress ${{ steps.find.outputs.new_count }} new trivy CVE(s) pending remediation"
+        body: |-
+          Add temporary Trivy ignore entries for newly reported CVEs.
+
+          Jira issue(s): ${{ steps.apply_ignorefile.outputs.created_issue_keys || 'not returned; see the workflow run' }}
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          The entries are tied to Jira issues and should be removed after remediation or formal risk acceptance.
+        commit-message: "ci: suppress ${{ steps.find.outputs.new_count }} new trivy CVE(s) pending remediation"
+        add-paths: |-
+          ${{ steps.find.outputs.ignorefile }}
+          .trivy.yaml
+        delete-branch: true
+
+    - name: trivy-notify/enable-auto-merge
+      if: ${{ steps.ignorefile_pr.outputs.pull-request-number != '' }}
+      continue-on-error: true
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |-
-        set -euo pipefail
-
-        IGNOREFILE="${{ steps.find.outputs.ignorefile }}"
-
-        # '.trivy.yaml' is only touched on the very first suppressed CVE (see 'apply-ignorefile.sh'),
-        # to enable its 'ignorefile:' key -- commit it alongside when that happened.
-        if git diff --quiet -- "${IGNOREFILE}" .trivy.yaml; then
-          echo "no ${IGNOREFILE}/.trivy.yaml changes to commit"
-          exit 0
-        fi
-
-        git config user.name "ik-code-writer[bot]"
-        git config user.email "ik-code-writer[bot]@users.noreply.github.com"
-        git add "${IGNOREFILE}" .trivy.yaml
-
-        TICKETS="${{ steps.apply_ignorefile.outputs.created_issue_keys }}"
-        git commit -m "ci: suppress ${{ steps.find.outputs.new_count }} new trivy CVE(s) pending remediation" \
-          -m "${TICKETS:-no Jira ticket reference returned, see run URL in .trivyignore.yaml}"
-        git push origin "HEAD:${{ github.ref_name }}"
+        GH_TOKEN: ${{ steps.code_writer_token.outputs.token }}
+        PR_NUMBER: ${{ steps.ignorefile_pr.outputs.pull-request-number }}
+        REPOSITORY: ${{ github.repository }}
+      run: gh pr merge "${PR_NUMBER}" --auto --squash --repo "${REPOSITORY}"
