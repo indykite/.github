@@ -153,7 +153,20 @@ JIRA_PAYLOAD="$(
                                      {type: "paragraph", content: [text("Team: " + $team)]},
                                      {type: "paragraph", content: [text("CVE count: " + (($findings[0] | length) | tostring))]},
                                      {type: "paragraph", content: [text("Findings:")]},
-                                     {type: "bulletList", content: $finding_items}
+                                     {type: "bulletList", content: $finding_items},
+                                     {
+                                         type: "panel",
+                                         attrs: {panelType: "warning"},
+                                         content: [{
+                                             type: "paragraph",
+                                             content: [
+                                                 {type: "text", text: "Remove the temporary Trivy exception after remediation. ",
+                                                     marks: [{type: "strong"}]},
+                                                 text("Remove the corresponding entry from the repository Trivy ignore file, " +
+                                                     "then rerun Trivy to verify that the vulnerability is resolved without suppression.")
+                                             ]
+                                         }]
+                                     }
                                  ]
                              }
                          }
