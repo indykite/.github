@@ -71,13 +71,13 @@ fi
 echo "jira_confirmed=true" >>"${GITHUB_OUTPUT}"
 
 IGNORE_ENTRIES_JSON="$(
-    jq -c --arg ts "${TIMESTAMP}" --arg run_url "${RUN_URL}" --arg global_key "${GLOBAL_ISSUE_KEY}" --argjson keys "${KEYS_JSON}" '
+    jq -c --arg ts "${TIMESTAMP}" --arg global_key "${GLOBAL_ISSUE_KEY}" --argjson keys "${KEYS_JSON}" '
       map({
         id: .id,
         statement: (
           ($keys[.id] // $global_key // "") as $key
           | (if $key != "" then $key + " - " else "" end)
-          + "auto-filed " + $ts + " by trivy-notify; affected: " + (.packages | join(", ")) + "; run: " + $run_url
+          + "auto-filed " + $ts + " by trivy-notify"
         )
       })
     ' new-cves.json
@@ -95,4 +95,8 @@ if [[ ! -f "${IGNOREFILE}" ]]; then
         yq eval -i ".ignorefile = \"${IGNOREFILE}\"" .trivy.yaml
     fi
 fi
-yq eval -i ".vulnerabilities = ((.vulnerabilities // []) + ${IGNORE_ENTRIES_JSON})" "${IGNOREFILE}"
+yq eval -i ".vulnerabilities = (((.vulnerabilities // []) | map(
+  if ((.statement // \"\") | contains(\" by trivy-notify; affected:\")) then
+    .statement |= sub(\"; run: https://github.com/.*$\"; \"\")
+  else . end
+)) + ${IGNORE_ENTRIES_JSON})" "${IGNOREFILE}"

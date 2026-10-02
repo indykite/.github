@@ -16,9 +16,9 @@
 #
 # On any new vulnerability: create a Jira issue through the Jira Cloud REST API using the
 # dedicated service-account token, then append an ignore-file entry per CVE (statement includes
-# the returned Jira issue key, a UTC timestamp, and the run URL -- see 'apply-ignorefile.sh') and
-# open a PR from a dedicated bot branch. Auto-merge is enabled, but GitHub merges only after the
-# repository's required checks pass. A human removes the entry manually once the CVE is actually
+# the returned Jira issue key and a UTC timestamp -- see 'apply-ignorefile.sh') and
+# open a PR from a dedicated bot branch. Auto-merge is requested only when enabled by the repo,
+# and remains subject to required checks and approvals. A human removes the entry once the CVE is
 # resolved or permanently accepted. The Slack summary is posted independently of the Jira call's
 # outcome (a Jira/Slack outage never fails the scan).
 #
@@ -115,6 +115,30 @@ runs:
           exit 1
         fi
 
+    - name: trivy-notify/jira-watchers
+      if: ${{ steps.jira_create.outcome == 'success' && steps.find.outputs.new_count > 0 }}
+      continue-on-error: true
+      shell: bash
+      env:
+        JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_RESPONSE_BODY: ${{ steps.jira_create.outputs.body }}
+      run: |-
+        ISSUE_KEY="$(jq -r '.created[0].issue_key' <<<"${JIRA_RESPONSE_BODY}")"
+        WATCHER_IDS=("63f6268789de3d475af53c13" "712020:04103f92-5934-4a13-a12b-fa3e1b3cec7b")
+        for ACCOUNT_ID in "${WATCHER_IDS[@]}"; do
+          PAYLOAD="$(jq -cn --arg account_id "${ACCOUNT_ID}" '$account_id')"
+          if ! HTTP_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d "${PAYLOAD}" \
+            "https://api.atlassian.com/ex/jira/b5e52b9c-3a24-41f6-bf37-38d31606410e/rest/api/3/issue/${ISSUE_KEY}/watchers")"; then
+            echo "::warning::Jira watcher request failed for ${ACCOUNT_ID} on ${ISSUE_KEY}"
+          elif [[ "${HTTP_STATUS}" != 2[0-9][0-9] ]]; then
+            echo "::warning::Could not add Jira watcher ${ACCOUNT_ID} to ${ISSUE_KEY} (HTTP/${HTTP_STATUS}); check Manage watcher list permission"
+          fi
+        done
+
     # ---- Runs after the Jira API call so the ignore-file statement can reference the actual
     #      created issue key (see 'apply-ignorefile.sh' for the response contract). 'always()':
     #      Slack still reports the alert if Jira is unavailable, while CVEs remain unsuppressed
@@ -131,20 +155,6 @@ runs:
         SLACK_TEXT: ${{ steps.find.outputs.slack_text }}
         JIRA_RESPONSE_BODY: ${{ steps.jira_create.outputs.body }}
       run: ${{ github.action_path }}/apply-ignorefile.sh
-
-    # 'always()': a Jira API failure must never suppress the Slack alert.
-    - name: trivy-notify/slack-notify
-      uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0 - https://github.com/slackapi/slack-github-action/releases
-      if: ${{ always() && steps.find.outputs.new_count > 0 }}
-      continue-on-error: true # a Slack outage must never fail the scheduled scan
-      with:
-        token: ${{ inputs.slack-bot-token }}
-        method: chat.postMessage
-        payload: |-
-          {
-            "channel": "${{ steps.find.outputs.slack_channel }}",
-            "text": ${{ toJson(steps.apply_ignorefile.outputs.slack_text) }}
-          }
 
     - name: trivy-notify/mint-github-token
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0 - https://github.com/actions/create-github-app-token/releases
@@ -196,4 +206,35 @@ runs:
         GH_TOKEN: ${{ steps.code_writer_token.outputs.token }}
         PR_NUMBER: ${{ steps.ignorefile_pr.outputs.pull-request-number }}
         REPOSITORY: ${{ github.repository }}
-      run: gh pr merge "${PR_NUMBER}" --auto --squash --repo "${REPOSITORY}"
+      run: |-
+        AUTO_MERGE_ALLOWED="$(gh api "repos/${REPOSITORY}" --jq '.allow_auto_merge')"
+        if [[ "${AUTO_MERGE_ALLOWED}" == "true" ]]; then
+          gh pr merge "${PR_NUMBER}" --auto --squash --repo "${REPOSITORY}"
+        else
+          echo "::notice::Auto-merge is disabled; review and merge the Trivy suppression PR manually"
+        fi
+
+    - name: trivy-notify/slack-payload
+      id: slack_payload
+      if: ${{ always() && steps.find.outputs.new_count > 0 }}
+      shell: bash
+      env:
+        SLACK_CHANNEL: ${{ steps.find.outputs.slack_channel }}
+        SLACK_TEXT: ${{ steps.apply_ignorefile.outputs.slack_text || steps.find.outputs.slack_text }}
+        PR_URL: ${{ steps.ignorefile_pr.outputs.pull-request-url }}
+      run: |-
+        PAYLOAD="$(jq -cn --arg channel "${SLACK_CHANNEL}" --arg text "${SLACK_TEXT}" --arg pr_url "${PR_URL}" '
+          {channel: $channel, text: ($text + if $pr_url != "" then
+            "\nSuppression PR: <" + $pr_url + "|Review and merge>" else
+            "\nSuppression PR was not created; check the workflow run." end)}
+        ')"
+        echo "payload=${PAYLOAD}" >> "${GITHUB_OUTPUT}"
+
+    - name: trivy-notify/slack-notify
+      uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0 - https://github.com/slackapi/slack-github-action/releases
+      if: ${{ always() && steps.find.outputs.new_count > 0 && steps.slack_payload.outputs.payload != '' }}
+      continue-on-error: true
+      with:
+        token: ${{ inputs.slack-bot-token }}
+        method: chat.postMessage
+        payload: ${{ steps.slack_payload.outputs.payload }}
