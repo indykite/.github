@@ -4,11 +4,12 @@
 # Managed by GitHub Actions
 #
 # Prerequisites (calling job must declare these permissions):
-#   - 'permissions.contents: write'         -- required for SARIF/SBOM upload, and by 'trivy-notify' to commit '.trivyignore.yaml'
+#   - 'permissions.contents: write'         -- required for SARIF/SBOM upload
 #   - 'permissions.security-events: write'  -- required by 'github/codeql-action/upload-sarif' (SARIF upload, master only)
 #   - 'permissions.actions: write'          -- required by 'actions/upload-artifact' (SBOM upload, fs + master only)
+#   - pass 'IK_CODE_WRITER_CLIENT_ID' and 'IK_CODE_WRITER_PEM'; 'trivy-notify' mints a token only for Jira-confirmed CVEs
 #
-# No token input is needed: both upload steps use the implicit 'github.token' from the calling job.
+# Artifact upload steps use the implicit 'github.token' from the calling job.
 #
 name: trivy
 description: >-
@@ -59,6 +60,14 @@ inputs:
     description: Jira Cloud API token for the dedicated Trivy service account, e.g. secrets.JIRA_API_TOKEN.
     required: false
     default: ''
+  github-app-client-id:
+    description: Non-secret ik-code-writer App client ID from vars.IK_CODE_WRITER_CLIENT_ID.
+    required: false
+    default: ''
+  github-app-private-key:
+    description: ik-code-writer App private key from secrets.IK_CODE_WRITER_PEM.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -69,7 +78,7 @@ runs:
       if: ${{ inputs.scan-type == 'fs' }}
 
     - name: setup/oras
-      uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2 - https://github.com/oras-project/setup-oras/releases
+      uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2 - https://github.com/oras-project/setup-oras/releases
 
     - name: trivy/init
       id: init
@@ -143,7 +152,7 @@ runs:
         TRIVY_SKIP_DB_UPDATE: 'true'
         TRIVY_SKIP_JAVA_DB_UPDATE: 'true'
       with:
-        version: 'v0.74.0' # renovate: datasource=github-releases,depName=aquasecurity/trivy
+        version: 'v0.75.0' # renovate: datasource=github-releases,depName=aquasecurity/trivy
         scan-type: ${{ inputs.scan-type }}
         scan-ref: ${{ inputs.scan-type == 'fs' && '.' || '' }}
         image-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
@@ -255,3 +264,5 @@ runs:
       with:
         slack-bot-token: ${{ inputs.slack-bot-token }}
         jira-api-token: ${{ inputs.jira-api-token }}
+        github-app-client-id: ${{ inputs.github-app-client-id }}
+        github-app-private-key: ${{ inputs.github-app-private-key }}

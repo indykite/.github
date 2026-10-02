@@ -100,6 +100,8 @@ jobs:
           scanners: ${{ github.event_name != 'pull_request' && 'vuln,secret,misconfig,license' || '' }}
           slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
           jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
+          github-app-client-id: ${{ vars.IK_CODE_WRITER_CLIENT_ID }}
+          github-app-private-key: ${{ secrets.IK_CODE_WRITER_PEM }}
 
       - name: Write trivy summary
         if: ${{ always() && hashFiles('trivy-table.txt') != '' }}
