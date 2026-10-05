@@ -95,8 +95,7 @@ if [[ ! -f "${IGNOREFILE}" ]]; then
         yq eval -i ".ignorefile = \"${IGNOREFILE}\"" .trivy.yaml
     fi
 fi
-yq eval -i ".vulnerabilities = (((.vulnerabilities // []) | map(
-  if ((.statement // \"\") | contains(\" by trivy-notify; affected:\")) then
-    .statement |= sub(\"; run: https://github.com/.*$\"; \"\")
-  else . end
-)) + ${IGNORE_ENTRIES_JSON})" "${IGNOREFILE}"
+yq eval -i ".vulnerabilities = (.vulnerabilities // []) |
+  (.vulnerabilities[] | select((.statement // \"\") | contains(\" by trivy-notify; affected:\")) | .statement)
+    |= sub(\"; run: https://github.com/.*$\"; \"\") |
+  .vulnerabilities += ${IGNORE_ENTRIES_JSON}" "${IGNOREFILE}"
