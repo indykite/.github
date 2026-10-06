@@ -1,0 +1,326 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+# Prerequisites:
+#   - 'actions/checkout' must be called prior to this action to fetch the repository
+#   - 'permissions.id-token: write' must be set in the workflow using this action if calling 'docker-setup' sub-action here,
+#     required by https://github.com/google-github-actions/auth
+#
+# Concurrency:
+#   The "already published" checks (both GAR and Docker Hub) and the subsequent push are not
+#   atomic: two concurrent runs publishing the same chart/version can both observe it as absent
+#   and then both push. Our IaC-managed registries enforce immutable tags server-side (see
+#   ops#1095 for Docker Hub), so the loser's push is denied rather than silently overwriting the
+#   winner's - but that still fails the run. Composite actions can't declare a 'concurrency:' group
+#   for their own steps - the calling workflow must add one (e.g.
+#   'concurrency: publish-chart-${{ <chart-name-or-path> }}') to serialize publishes of the same
+#   chart if it may run concurrently (e.g. concurrent pushes/PRs).
+#
+name: chart-publish
+description: Publishes Helm chart to GCP Artifact Registry and optionally Docker Hub
+
+inputs:
+  # GCP Authentication
+  gcp-service-account:
+    description: GCP Service Account name. If not given, 'indykite/.github/.github/actions/docker-setup' must be initialized prior to this action.
+    required: false
+    default: ""
+  workload-identity-provider:
+    description: Workload identity provider. If not given, 'indykite/.github/.github/actions/docker-setup' must be initialized prior to this action.
+    required: false
+    default: ""
+  # Destination registry
+  artifact-registry-url:
+    required: false
+    default: ""
+    description: >-
+      Docker repository URI having full hostname, any prefixes (e.g. region) and repository name itself, if any,
+      e.g. '<secrets.GCP_GAR_DOCKER>'.
+      If not given, the resulted image won't be pushed and only built for local testing.
+  immutable-tags:
+    required: true
+    default: "true"
+    description: >-
+      Set to 'false' to publish chart even if the version is already published. Note this check
+      is not a lock: it doesn't protect against two concurrent runs publishing the same
+      chart/version - see this action's "Concurrency" note.
+  chart-path:
+    required: false
+    default: "chart"
+    description: Path to the chart directory relative to the repo root. Default 'chart/' preserves backward compat.
+  version-suffix:
+    required: false
+    default: ""
+    description: >-
+      Optional suffix appended to the chart version as '-<value>' (e.g. 'dev-abc1234'). The
+      resulting '<Chart.yaml version>-<value>' must be a valid SemVer 2.0.0 prerelease version
+      (the same rules Helm's `--version` enforces) - the action fails otherwise. Takes precedence
+      over the pull_request-number suffix (replaces it, not appended after it) when both would
+      otherwise apply. Leave empty (default) to keep existing callers unaffected: the chart
+      version is still auto-suffixed with '-pr-<number>-<sha>' on a pull_request, and published
+      as-is from Chart.yaml on any other event.
+  # Docker Hub Authentication (optional additional publish target)
+  dockerhub-username:
+    description: >-
+      Docker Hub username. If given together with dockerhub-token and dockerhub-repository, this
+      action also publishes the chart to Docker Hub.
+    required: false
+    default: ""
+  dockerhub-token:
+    description: >-
+      Docker Hub access token. If given together with dockerhub-username and dockerhub-repository,
+      this action also publishes the chart to Docker Hub.
+    required: false
+    default: ""
+  dockerhub-repository:
+    description: >-
+      Docker Hub OCI namespace to publish the chart under, e.g. 'indykite'. Required together with
+      dockerhub-username/dockerhub-token to publish to Docker Hub - the chart is pushed to
+      'oci://registry-1.docker.io/<dockerhub-repository>', landing at
+      '<dockerhub-repository>/<chart name>' tagged '<version>-<dockerhub-version-suffix>'. The
+      suffix is needed because Docker Hub has no GAR-style nested '/helm' path to keep a chart's
+      OCI artifact in its own namespace, separate from a same-named container image repo - without
+      it, a chart version and an image tag built from the same release version would collide on
+      the same '<dockerhub-repository>/<chart name>:<version>' tag.
+    required: false
+    default: ""
+  dockerhub-version-suffix:
+    description: >-
+      Suffix appended to the chart version as '-<value>' for the Docker Hub-published tag (same
+      convention as version-suffix - do not include the leading '-'), e.g. 'chart' for
+      '<version>-chart'. Must not be empty: an empty value would produce the same
+      '<dockerhub-repository>/<chart name>:<version>' tag as the container image, exactly the
+      collision this input exists to avoid - see dockerhub-repository's description. Note this
+      suffixed version is Helm's own `Chart.yaml` version for the Docker Hub package, so it's also
+      what `.Chart.Version` resolves to in that chart's templates - a chart that defaults its image
+      tag from `.Chart.Version` (as intent-agent does) will resolve to the suffixed version too;
+      such charts must set their image tag explicitly instead.
+    required: false
+    default: "chart"
+#
+runs:
+  using: composite
+  steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+      with:
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        service_account: ${{ inputs.gcp-service-account }}
+
+    - name: Configure Docker auth for Artifact Registry
+      shell: bash
+      run: |-
+        ARTIFACT_REGISTRY_HOSTNAME="$(echo "${{ inputs.artifact-registry-url }}" | awk -F/ '{print $1}')"
+        gcloud --quiet auth configure-docker ${ARTIFACT_REGISTRY_HOSTNAME}
+
+    - name: Cache Helm Data
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.local/share/helm
+        key: ${{ runner.os }}-helm-data-v3.20.0 # renovate: datasource=github-releases,depName=helm/helm
+        restore-keys: |
+          ${{ runner.os }}-helm-data
+
+    - name: Cache Helm Cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/helm
+        key: ${{ runner.os }}-helm-cache-v3.20.0 # renovate: datasource=github-releases,depName=helm/helm
+        restore-keys: |
+          ${{ runner.os }}-helm-cache
+
+    - name: Install Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      with:
+        version: v4.3.0 # renovate: datasource=github-releases,depName=helm/helm
+
+    # `helm registry login` (not docker/login-action) - Helm's OCI client resolves credentials
+    # for 'registry-1.docker.io' from its own store, which a Docker Hub login keyed 'docker.io'
+    # (the legacy 'https://index.docker.io/v1/' entry docker/login-action would write) doesn't
+    # reliably match.
+    - name: Validate Docker Hub inputs
+      shell: bash
+      if: >-
+        inputs.dockerhub-repository != '' ||
+        inputs.dockerhub-username != '' ||
+        inputs.dockerhub-token != ''
+      env:
+        DOCKERHUB_REPOSITORY: ${{ inputs.dockerhub-repository }}
+        DOCKERHUB_USERNAME: ${{ inputs.dockerhub-username }}
+        DOCKERHUB_TOKEN: ${{ inputs.dockerhub-token }}
+      run: |-
+        if [[ -z "${DOCKERHUB_REPOSITORY}" || -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
+          echo "::error::dockerhub-repository, dockerhub-username, and dockerhub-token must be set together"
+          exit 1
+        fi
+
+    - name: Log in to Docker Hub
+      shell: bash
+      if: >-
+        inputs.dockerhub-repository != '' &&
+        inputs.dockerhub-username != '' &&
+        inputs.dockerhub-token != ''
+      env:
+        DOCKERHUB_USERNAME: ${{ inputs.dockerhub-username }}
+        DOCKERHUB_TOKEN: ${{ inputs.dockerhub-token }}
+      run: |-
+        echo "${DOCKERHUB_TOKEN}" | helm registry login registry-1.docker.io \
+          --username "${DOCKERHUB_USERNAME}" --password-stdin
+
+    - name: Extract chart information
+      id: chart-info
+      shell: bash
+      env:
+        CHART_PATH: ${{ inputs.chart-path }}
+        VERSION_SUFFIX: ${{ inputs.version-suffix }}
+        DOCKERHUB_VERSION_SUFFIX: ${{ inputs.dockerhub-version-suffix }}
+      run: |-
+        CHART_NAME=$(yq eval '.name' "${CHART_PATH}/Chart.yaml")
+        CHART_VERSION=$(yq eval '.version' "${CHART_PATH}/Chart.yaml")
+        if [[ -n "${VERSION_SUFFIX}" ]]; then
+          CHART_VERSION="${CHART_VERSION}-${VERSION_SUFFIX}"
+        elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          CHART_VERSION="${CHART_VERSION}-pr-${{ github.event.pull_request.number }}-${GITHUB_SHA:0:7}"
+        fi
+
+        # Validate the complete suffixed version against strict SemVer 2.0.0 (the same rules
+        # Helm's `--version` flag enforces, adapted to POSIX ERE for bash's =~ -
+        # https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string),
+        # not just inputs.version-suffix in isolation - a suffix like "01" or "dev..build" passes
+        # a naive charset check but still produces a version Helm rejects (or, with an
+        # underscore, one that's a shell-safe but invalid SemVer prerelease identifier).
+        SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+        if [[ ! "${CHART_VERSION}" =~ ${SEMVER_RE} ]]; then
+          echo "::error::'${CHART_VERSION}' is not a valid SemVer 2.0.0 version" >&2
+          exit 1
+        fi
+
+        # Docker Hub gets its own suffixed version (and thus its own package/tag) - see
+        # dockerhub-version-suffix's description for why an empty value isn't allowed here.
+        if [[ -z "${DOCKERHUB_VERSION_SUFFIX}" ]]; then
+          echo "::error::dockerhub-version-suffix must not be empty" >&2
+          exit 1
+        fi
+
+        # Appending to whatever CHART_VERSION already is (release version, or already
+        # '-pr-<n>-<sha>'/version-suffix'd) stays valid SemVer: it only ever extends the last
+        # prerelease identifier, never introduces a new dot segment.
+        DOCKERHUB_VERSION="${CHART_VERSION}-${DOCKERHUB_VERSION_SUFFIX}"
+        if [[ ! "${DOCKERHUB_VERSION}" =~ ${SEMVER_RE} ]]; then
+          echo "::error::'${DOCKERHUB_VERSION}' is not a valid SemVer 2.0.0 version" >&2
+          exit 1
+        fi
+        {
+          echo "name=${CHART_NAME}"
+          echo "version=${CHART_VERSION}"
+          echo "package=${CHART_NAME}-${CHART_VERSION}.tgz"
+          echo "dockerhub-version=${DOCKERHUB_VERSION}"
+          echo "dockerhub-package=${CHART_NAME}-${DOCKERHUB_VERSION}.tgz"
+        } >> "$GITHUB_OUTPUT"
+        echo "Chart: ${CHART_NAME} v${CHART_VERSION}"
+
+      # should be handled via Immutable image tags: https://cloud.google.com/artifact-registry/docs/docker/names#versions
+    - name: Check if version already published
+      id: check-gar
+      shell: bash
+      if: inputs.immutable-tags != 'false'
+      run: |
+        if gcloud artifacts docker images list \
+          "${{ inputs.artifact-registry-url }}/helm/${{ steps.chart-info.outputs.name }}" \
+          --include-tags \
+          --filter="tags:${{ steps.chart-info.outputs.version }}" \
+          --format="get(tags)" 2>/dev/null | grep -Fxq "${{ steps.chart-info.outputs.version }}"; then
+          echo "Version ${{ steps.chart-info.outputs.version }} already published, skipping"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "Version ${{ steps.chart-info.outputs.version }} not found, will publish"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+
+      # No Docker Hub equivalent of `gcloud artifacts docker images list` - probe with a pull
+      # instead, against the suffixed dockerhub-version (see its own step's comment). A confirmed
+      # "not found"/"manifest unknown" is the only case treated as absent - Docker Hub tags are
+      # mutable, so any other pull failure (auth, transient 5xx) must fail loudly instead of
+      # falling through to a push that could silently overwrite an existing chart. This check
+      # isn't a lock against a concurrent run doing the same - see this action's top-level
+      # "Concurrency" note.
+    - name: Check if version already published to Docker Hub
+      id: check-dockerhub
+      shell: bash
+      if: inputs.immutable-tags != 'false' && inputs.dockerhub-repository != ''
+      env:
+        DOCKERHUB_REPOSITORY: ${{ inputs.dockerhub-repository }}
+        CHART_NAME: ${{ steps.chart-info.outputs.name }}
+        DOCKERHUB_VERSION: ${{ steps.chart-info.outputs.dockerhub-version }}
+      run: |
+        if PULL_OUTPUT="$(helm pull "oci://registry-1.docker.io/${DOCKERHUB_REPOSITORY}/${CHART_NAME}" \
+          --version "${DOCKERHUB_VERSION}" \
+          --destination "$(mktemp -d)" 2>&1)"; then
+          PULL_STATUS=0
+        else
+          PULL_STATUS=$?
+        fi
+        if [[ ${PULL_STATUS} -eq 0 ]]; then
+          echo "Version ${DOCKERHUB_VERSION} already published to Docker Hub, skipping"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        elif grep -qiE 'not found|manifest unknown' <<<"${PULL_OUTPUT}"; then
+          echo "Version ${DOCKERHUB_VERSION} not found on Docker Hub, will publish"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::Failed to check Docker Hub for existing version ${DOCKERHUB_VERSION}"
+          echo "${PULL_OUTPUT}" >&2
+          exit 1
+        fi
+
+    - name: Package chart
+      shell: bash
+      if: inputs.immutable-tags == 'false' || steps.check-gar.outputs.skip == 'false'
+      env:
+        CHART_PATH: ${{ inputs.chart-path }}
+        CHART_VERSION: ${{ steps.chart-info.outputs.version }}
+      run: helm package "${CHART_PATH}" --version "${CHART_VERSION}"
+
+    - name: Push chart to Artifact Registry
+      shell: bash
+      if: inputs.immutable-tags == 'false' || steps.check-gar.outputs.skip == 'false'
+      env:
+        CHART_NAME: ${{ steps.chart-info.outputs.name }}
+        CHART_VERSION: ${{ steps.chart-info.outputs.version }}
+        CHART_PACKAGE: ${{ steps.chart-info.outputs.package }}
+      run: |-
+        TARGET="oci://${{ inputs.artifact-registry-url }}/helm"
+        helm push "${CHART_PACKAGE}" "${TARGET}"
+        echo "Published: ${TARGET}/${CHART_NAME}:${CHART_VERSION}"
+
+      # `helm push`'s destination tag comes from the packaged chart's own embedded Chart.yaml
+      # version, not from an argument at push time - Docker Hub needing a different ('-chart'
+      # suffixed) tag than Artifact Registry means it needs its own package built at that version,
+      # not the one "Package chart" above already produced.
+    - name: Package chart for Docker Hub
+      shell: bash
+      if: >-
+        inputs.dockerhub-repository != '' &&
+        (inputs.immutable-tags == 'false' || steps.check-dockerhub.outputs.skip == 'false')
+      env:
+        CHART_PATH: ${{ inputs.chart-path }}
+        DOCKERHUB_VERSION: ${{ steps.chart-info.outputs.dockerhub-version }}
+      run: helm package "${CHART_PATH}" --version "${DOCKERHUB_VERSION}"
+
+    - name: Push chart to Docker Hub
+      shell: bash
+      if: >-
+        inputs.dockerhub-repository != '' &&
+        (inputs.immutable-tags == 'false' || steps.check-dockerhub.outputs.skip == 'false')
+      env:
+        DOCKERHUB_REPOSITORY: ${{ inputs.dockerhub-repository }}
+        CHART_NAME: ${{ steps.chart-info.outputs.name }}
+        DOCKERHUB_VERSION: ${{ steps.chart-info.outputs.dockerhub-version }}
+        DOCKERHUB_PACKAGE: ${{ steps.chart-info.outputs.dockerhub-package }}
+      run: |-
+        TARGET="oci://registry-1.docker.io/${DOCKERHUB_REPOSITORY}"
+        helm push "${DOCKERHUB_PACKAGE}" "${TARGET}"
+        echo "Published: ${TARGET}/${CHART_NAME}:${DOCKERHUB_VERSION}"
