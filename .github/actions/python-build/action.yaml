@@ -1,0 +1,100 @@
+---
+#
+# DO NOT EDIT!!!
+# Managed by GitHub Actions
+#
+name: python-build
+description: Build Python project
+inputs:
+  python-version:
+    description: Python version
+    required: true
+  python-cache-enabled:
+    description: true if pip/pipenv caches should be used
+    default: "true"
+  upload-coverage:
+    description: true if code coverage should be uploaded
+    default: "true"
+  codecov-token:
+    description: codecov.io token
+    required: false
+outputs:
+  coverage:
+    description: Code Coverage text report
+    value: ${{ steps.run_tests.outputs.coverage }}
+
+runs:
+  using: composite
+  steps:
+    - name: setup/python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0 - https://github.com/actions/setup-python/releases
+      id: setup-python
+      with:
+        python-version: '${{ inputs.python-version }}'
+
+    - name: Get pip cache dir
+      id: pip-cache
+      if: inputs.python-cache-enabled == 'true'
+      shell: bash
+      run: |
+        echo "pip_cache_dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
+
+    - name: actions/cache-pip
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 - https://github.com/actions/cache/releases
+      if: inputs.python-cache-enabled == 'true'
+      with:
+        path: ${{ steps.pip-cache.outputs.pip_cache_dir }}
+        key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pip
+
+    - name: actions/cache-pyenv
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 - https://github.com/actions/cache/releases
+      if: inputs.python-cache-enabled == 'true'
+      with:
+        path: ~/.local/share/virtualenvs
+        key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-pipenv-${{ hashFiles('**/Pipfile.lock') }}
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        pip install --upgrade pip
+        pip install pipenv
+        make install_dev
+
+    - name: Run tests with coverage
+      shell: bash
+      id: run_tests
+      # https://github.com/orgs/community/discussions/26288#discussioncomment-3876281
+      run: |
+        make test_coverage
+        make test_coverage_report_html
+        make test_coverage_report_xml
+
+        delimiter="$(openssl rand -hex 8)"
+        echo "coverage<<${delimiter}" >> "${GITHUB_OUTPUT}"
+        echo "### Code coverage" >> "${GITHUB_OUTPUT}"
+        echo '```' >> "${GITHUB_OUTPUT}"
+
+        make test_coverage_report_text >> "${GITHUB_OUTPUT}"
+
+        echo '```' >> "${GITHUB_OUTPUT}"
+        echo "${delimiter}" >> "${GITHUB_OUTPUT}"
+
+    - name: actions/upload-artifact/code-coverage
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 - https://github.com/actions/upload-artifact/releases
+      if: inputs.upload-coverage == 'true'
+      with:
+        name: code-coverage
+        path: "htmlcov/"
+        if-no-files-found: error
+
+    - name: codecov/upload-coverage
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1 - https://github.com/codecov/codecov-action/releases
+      continue-on-error: true
+      if: inputs.upload-coverage == 'true'
+      with:
+        token: ${{ inputs.codecov-token }}
+        fail_ci_if_error: true
+
+    - name: Dry run app scripts
+      shell: bash
+      run: make dry_run
