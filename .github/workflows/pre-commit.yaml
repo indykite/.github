@@ -62,6 +62,8 @@ jobs:
       - name: pre-commit
         # uses: ./.github/actions/pre-commit/action.yaml
         uses: indykite/.github/.github/actions/pre-commit@master
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.FA_TOKEN }} # FontAwesome Pro token, empty in repos without the secret
         with:
           # shared workflow; required to do ssh://git@github.com... from another repos
           github_token: ${{ steps.code_reader_token.outputs.token }}
