@@ -53,7 +53,7 @@ jobs:
       - name: Mint ik-code-reader installation token
         id: code_reader_token
         if: ${{ github.event.pull_request.head.repo.fork != true }} # fork PRs cannot read the PEM
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0 - https://github.com/actions/create-github-app-token/releases
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 - https://github.com/actions/create-github-app-token/releases
         with:
           client-id: ${{ vars.IK_CODE_READER_CLIENT_ID }}
           private-key: ${{ secrets.IK_CODE_READER_PEM }}
@@ -62,6 +62,8 @@ jobs:
       - name: pre-commit
         # uses: ./.github/actions/pre-commit/action.yaml
         uses: indykite/.github/.github/actions/pre-commit@master
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.FA_TOKEN }} # FontAwesome Pro token, empty in repos without the secret
         with:
           # shared workflow; required to do ssh://git@github.com... from another repos
           github_token: ${{ steps.code_reader_token.outputs.token }}
@@ -142,7 +144,7 @@ jobs:
       - name: Mint ik-code-reader installation token
         id: code_reader_token
         if: ${{ github.event.pull_request.head.repo.fork != true }} # fork PRs cannot read the PEM
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0 - https://github.com/actions/create-github-app-token/releases
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0 - https://github.com/actions/create-github-app-token/releases
         with:
           client-id: ${{ vars.IK_CODE_READER_CLIENT_ID }}
           private-key: ${{ secrets.IK_CODE_READER_PEM }}
