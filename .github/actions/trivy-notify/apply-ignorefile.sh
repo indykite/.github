@@ -9,8 +9,8 @@
 #   {"created": [{"issue_key": "ENG-1234"}]}
 # or per-CVE tickets:
 #   {"created": [{"cve_id": "CVE-2024-0001", "issue_key": "ENG-1234"}, ...]}
-# When no issue key is returned, the CVEs remain unsuppressed so a successful HTTP response cannot
-# hide an unfiled alert.
+# When no issue key is returned, the entries reference the workflow run and still form a
+# suppression PR, while the notification reports the Jira failure.
 #
 set -euo pipefail
 
@@ -52,7 +52,7 @@ JIRA_TEXT="$(jq -rn \
     | if ($links | length) > 0 then
         "Jira: " + ($links | join(", ")) + " (team " + $team + "), run: " + $run_url
       else
-        "Jira: filed under " + $project + " (team " + $team + "), issue key not returned; run: " + $run_url
+        "Jira: issue creation failed or unconfirmed under " + $project + " (team " + $team + "); no issue key returned; run: " + $run_url
       end')"
 echo "jira_text=${JIRA_TEXT}" >>"${GITHUB_OUTPUT}"
 
@@ -64,20 +64,24 @@ echo "jira_text=${JIRA_TEXT}" >>"${GITHUB_OUTPUT}"
 } >>"${GITHUB_OUTPUT}"
 
 if [[ -z "${CREATED_ISSUE_KEYS}" ]]; then
-    echo "warning: Jira API returned no created issue key; leaving CVEs unsuppressed" >&2
+    echo "::warning::Jira API returned no created issue key; continuing with a workflow-linked suppression PR" >&2
     echo "jira_confirmed=false" >>"${GITHUB_OUTPUT}"
-    exit 0
+else
+    echo "jira_confirmed=true" >>"${GITHUB_OUTPUT}"
 fi
-echo "jira_confirmed=true" >>"${GITHUB_OUTPUT}"
 
 IGNORE_ENTRIES_JSON="$(
-    jq -c --arg ts "${TIMESTAMP}" --arg global_key "${GLOBAL_ISSUE_KEY}" --argjson keys "${KEYS_JSON}" '
+    jq -c --arg ts "${TIMESTAMP}" --arg run_url "${RUN_URL}" --arg global_key "${GLOBAL_ISSUE_KEY}" --argjson keys "${KEYS_JSON}" '
       map({
         id: .id,
         statement: (
           ($keys[.id] // $global_key // "") as $key
-          | (if $key != "" then $key + " - " else "" end)
-          + "auto-filed " + $ts + " by trivy-notify"
+          | if $key != "" then
+              $key + " - auto-filed " + $ts + " by trivy-notify"
+            else
+              "Jira issue creation failed or unconfirmed; run: " + $run_url
+              + "; generated " + $ts + " by trivy-notify"
+            end
         )
       })
     ' new-cves.json
