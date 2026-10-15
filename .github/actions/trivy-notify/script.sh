@@ -43,7 +43,7 @@ jq -c '
       title: .[0].title,
       fixed_version: .[0].fixed_version,
       packages: ([.[].pkg_name] | unique),
-    package_versions: (map(.pkg_name + " v" + .installed_version) | unique),
+        package_versions: (map(.pkg_name + " v" + (.installed_version | ltrimstr("v"))) | unique),
       targets: ([.[].target] | unique)
     })
   | sort_by(. as $item | ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"] | index($item.severity))
