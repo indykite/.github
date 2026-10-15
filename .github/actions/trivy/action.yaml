@@ -78,7 +78,7 @@ runs:
       if: ${{ inputs.scan-type == 'fs' }}
 
     - name: setup/oras
-      uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2 - https://github.com/oras-project/setup-oras/releases
+      uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2 - https://github.com/oras-project/setup-oras/releases
 
     - name: trivy/init
       id: init
@@ -257,10 +257,7 @@ runs:
     # Slack + Jira notifications for new CVEs: only once a repo-wide 'vuln' scan is enabled.
     - name: trivy/notify
       uses: indykite/.github/.github/actions/trivy-notify@master
-      if: >-
-        ${{ always() &&
-        github.event_name != 'pull_request' &&
-        contains(steps.init.outputs.scanners, 'vuln') && hashFiles('trivy-results.json') != '' }}
+      if: ${{ always() && contains(steps.init.outputs.scanners, 'vuln') && hashFiles('trivy-results.json') != '' }}
       with:
         slack-bot-token: ${{ inputs.slack-bot-token }}
         jira-api-token: ${{ inputs.jira-api-token }}
