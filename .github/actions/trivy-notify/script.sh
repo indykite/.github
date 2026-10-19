@@ -175,7 +175,7 @@ JIRA_PAYLOAD="$(
 echo "jira_payload=${JIRA_PAYLOAD}" >>"${GITHUB_OUTPUT}"
 
 # ---- Slack summary ----
-TOP_FINDINGS="$(jq -r '.[] | "- \(.id) (\(.severity)) - \(.packages | join(", "))"' new-cves.json | head -20)"
+TOP_FINDINGS="$(jq -r '.[:20][] | "- \(.id) (\(.severity)) - \(.packages | join(", "))"' new-cves.json)"
 
 {
     echo "slack_text<<TRIVY_NOTIFY_EOF"
