@@ -15,6 +15,8 @@ yamllint    pre-installed
 trivy       action # i.e. under separate GitHub Action
 checkov     action # pip://checkov
 #
+eslint              npm://eslint
+prettier            npm://prettier
 markdownlint-cli2   npm://markdownlint-cli2
 #
 pre-commit  pip://pre-commit
