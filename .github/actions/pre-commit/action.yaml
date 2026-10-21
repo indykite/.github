@@ -33,6 +33,12 @@ inputs:
     description: Trivy DB cache dir, replacement for action-wide env var. Normally, do not need to be updated
     default: "~/.cache/trivy"
     required: false
+  working_directory:
+    description: >-
+      Directory, relative to the repository root, for Go module commands such as `go list ./...`.
+      Pre-commit itself still runs from the repository root.
+    required: false
+    default: "."
 
 runs:
   using: composite
@@ -151,6 +157,7 @@ runs:
         TG_PROVIDER_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
         TF_PLUGIN_CACHE_DIR: ${{ inputs.tf_plugin_cache_dir }}
         TRIVY_CACHE_DIR: ${{ inputs.trivy_cache_dir }}
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
       run: |-
         # setup/pre-commit
         timeout ${{ inputs.action_timeout }}m $GITHUB_ACTION_PATH/script.sh
