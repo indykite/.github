@@ -217,14 +217,42 @@ runs:
         format: ${{ inputs.license-format }}
 
     # ---- Changed-file set for diff-aware blocking (pull_request only) ----
+    # The event's 'base.sha' is often missing from the shallow clone: when the base branch moves
+    # (common with stacked PRs), GitHub rebuilds 'refs/pull/N/merge' on the new base tip.
+    # Base resolution order:
+    #   1. HEAD is the PR merge commit (2nd parent == PR head): diff against 'HEAD^1', the base tip
+    #      the merge was built on. This is exactly the PR change set and is always in the clone.
+    #   2. 'base.sha', fetched on demand when missing locally.
+    #   3. Unresolvable: warn and write no 'changed-files.json', so 'trivy/fail-on-findings'
+    #      blocks on all results instead of silently blocking nothing.
     - name: trivy/changed-files
       if: ${{ github.event_name == 'pull_request' }}
       shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         set -euo pipefail
 
-        git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD \
-          | jq -R -s -c 'split("\n") | map(select(length > 0))' > changed-files.json
+        BASE=""
+        if [[ "$(git rev-parse --verify --quiet 'HEAD^2' || true)" == "${HEAD_SHA}" ]]; then
+          BASE="$(git rev-parse 'HEAD^1')"
+        elif git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+          BASE="${BASE_SHA}"
+        elif git fetch --no-tags --depth=1 origin "${BASE_SHA}" \
+          && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+          BASE="${BASE_SHA}"
+        fi
+
+        if [[ -z "${BASE}" ]]; then
+          echo "::warning title=trivy diff base not found::cannot resolve PR base ${BASE_SHA}; blocking on all findings"
+          exit 0
+        fi
+
+        echo "::notice title=trivy diff base::${BASE}"
+        git diff --name-only "${BASE}" HEAD \
+          | jq -R -s -c 'split("\n") | map(select(length > 0))' > changed-files.json.tmp
+        mv changed-files.json.tmp changed-files.json
 
     # ---- Apply the failure policy after report generation and uploads complete.
     - name: trivy/fail-on-findings
@@ -237,8 +265,14 @@ runs:
         set -euo pipefail
 
         CHANGED_FILES='[]'
-        if [[ "${DIFF_AWARE}" == "true" && -f changed-files.json ]]; then
-          CHANGED_FILES="$(cat changed-files.json)"
+        if [[ "${DIFF_AWARE}" == "true" ]]; then
+          if [[ -f changed-files.json ]]; then
+            CHANGED_FILES="$(cat changed-files.json)"
+          else
+            # No changed-file set (base unresolved or step skipped): fail closed, block on all results.
+            echo "::warning title=trivy diff-aware blocking disabled::changed-files.json missing, blocking on all findings"
+            DIFF_AWARE=false
+          fi
         fi
 
         BLOCKING_COUNT=$(jq --argjson changed "${CHANGED_FILES}" --argjson diff_aware "${DIFF_AWARE}" '

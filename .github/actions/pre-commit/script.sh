@@ -10,6 +10,7 @@ set -o errexit -o nounset -o pipefail
 : "${IS_CACHE:="false"}"
 : "${IS_DEBUG:="0"}"
 : "${IS_GOLANG:="0"}"
+: "${WORKING_DIRECTORY:="."}"
 : "${IS_NPM:="0"}"
 : "${NODE_PM:=""}"
 : "${NODE_PM_WORKDIR:="."}"
@@ -303,12 +304,19 @@ if [[ ${IS_CACHE} != "true" ]]; then
 
     # Golang
     if [[ ${IS_GOLANG} -gt 0 ]]; then
-        echo "Golang, download modules to local cache"
+        # An empty input means the repository root. Pre-commit itself stays at the root.
+        if [[ -z "${WORKING_DIRECTORY}" ]]; then
+            WORKING_DIRECTORY="."
+        fi
+        echo "Golang, download modules to local cache (working_directory=${WORKING_DIRECTORY})"
         # Yes, go list will actually download all dependencies to the local cache. There are no metadata,
         # so to be able to list required deps of nested modules, we need to download them first.
         # This is actually better than `go mod download` because it will download only dependencies,
         # that are directly required from the code, not just listed in nested modules go.mod files.
-        go list -test -deps ./... | awk 'END {print "Total packages " NR}'
+        (
+            cd "${WORKING_DIRECTORY}"
+            go list -test -deps ./... | awk 'END {print "Total packages " NR}'
+        )
     else
         echo "Golang, no need to download modules: IS_GOLANG=${IS_GOLANG}"
     fi
