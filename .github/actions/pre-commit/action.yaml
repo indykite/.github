@@ -35,7 +35,7 @@ inputs:
     required: false
   working_directory:
     description: >-
-      Directory, relative to the repository root, for Go module commands such as `go list ./...`.
+      Directory, relative to the repository root, for Go module prefetch (`go list ./...`).
       Pre-commit itself still runs from the repository root.
     required: false
     default: "."

@@ -117,6 +117,39 @@ disable_ci_skipped_hooks() {
 }
 
 #######################################
+# Download Go module dependencies for WORKING_DIRECTORY.
+#######################################
+prefetch_golang_modules() {
+    local workdir="${WORKING_DIRECTORY:-.}"
+    if [[ -z "${workdir}" ]]; then
+        workdir="."
+    fi
+
+    echo "[DEBUG] Golang, prefetching modules in working_directory=${workdir}"
+
+    if [[ ! -d "${workdir}" ]]; then
+        echo "⚠️ Go working directory does not exist: ${workdir}" >&2
+        return 1
+    fi
+
+    if [[ ! -f "${workdir}/go.mod" ]]; then
+        echo "[INFO] Golang, skipping module download: no go.mod in working_directory=${workdir}"
+        return 0
+    fi
+
+    echo "Golang, download modules to local cache (working_directory=${workdir})"
+    # Yes, go list will actually download all dependencies to the local cache. There are no metadata,
+    # so to be able to list required deps of nested modules, we need to download them first.
+    # This is actually better than `go mod download` because it will download only dependencies,
+    # that are directly required from the code, not just listed in nested modules go.mod files.
+    (
+        set -o pipefail
+        cd "${workdir}"
+        go list -test -deps ./... | awk 'END {print "Total packages " NR}'
+    )
+}
+
+#######################################
 #
 #######################################
 
@@ -304,19 +337,7 @@ if [[ ${IS_CACHE} != "true" ]]; then
 
     # Golang
     if [[ ${IS_GOLANG} -gt 0 ]]; then
-        # An empty input means the repository root. Pre-commit itself stays at the root.
-        if [[ -z "${WORKING_DIRECTORY}" ]]; then
-            WORKING_DIRECTORY="."
-        fi
-        echo "Golang, download modules to local cache (working_directory=${WORKING_DIRECTORY})"
-        # Yes, go list will actually download all dependencies to the local cache. There are no metadata,
-        # so to be able to list required deps of nested modules, we need to download them first.
-        # This is actually better than `go mod download` because it will download only dependencies,
-        # that are directly required from the code, not just listed in nested modules go.mod files.
-        (
-            cd "${WORKING_DIRECTORY}"
-            go list -test -deps ./... | awk 'END {print "Total packages " NR}'
-        )
+        prefetch_golang_modules
     else
         echo "Golang, no need to download modules: IS_GOLANG=${IS_GOLANG}"
     fi
