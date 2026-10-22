@@ -68,7 +68,6 @@ jobs:
           # shared workflow; required to do ssh://git@github.com... from another repos
           github_token: ${{ steps.code_reader_token.outputs.token }}
           checkout_fetch_master: "${{ vars.GH_CHECKOUT_FETCH_MASTER }}"
-          working_directory: ${{ vars.PRE_COMMIT_WORKING_DIRECTORY != '' && vars.PRE_COMMIT_WORKING_DIRECTORY || '.' }}
           action_timeout: "${{ vars.PRE_COMMIT_ACTION_TIMEOUT != null && vars.PRE_COMMIT_ACTION_TIMEOUT || 10 }}" # in minutes
           # comma separated list of hook ids; exclude autoupdate and branch checks on scheduled runs for cache purposes
           pre_commit_skip: >-
