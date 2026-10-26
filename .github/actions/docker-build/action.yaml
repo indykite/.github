@@ -13,7 +13,7 @@
 #
 name: docker-build
 # https://docs.docker.com/build/ci/github-actions/
-description: Build Docker container and optionally push it to a container registry or Docker Hub
+description: Build Docker container and optionally push it to one or more container registries and/or Docker Hub
 
 inputs:
   # GCP Authentication
@@ -39,8 +39,11 @@ inputs:
     required: false
     default: ""
     description: >-
-      Docker repository URI having full hostname, any prefixes (e.g. region) and repository name itself, if any,
+      Docker repository URI(s) having full hostname, any prefixes (e.g. region) and repository name itself, if any,
       e.g. '<secrets.GCP_GAR_DOCKER>' or 'docker.io/indykite'.
+      Multiple repositories can be given newline- or comma-separated (e.g. both GAR and Docker Hub) to push the
+      same build to all of them. The first one is used for the Trivy scan. At most one non-Docker Hub registry
+      hostname is supported, as 'docker-setup' logs in to a single registry besides Docker Hub.
       If not given, the resulted image won't be pushed and only built for local testing.
   docker-image-name:
     required: true
@@ -108,6 +111,7 @@ runs:
       env:
         GITHUB_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         GITHUB_RUN_STARTED_AT: ${{ github.run_started_at }}
+        DOCKER_REPOSITORY_URIS: ${{ inputs.docker-repository-uri }}
       run: |
         set -euo pipefail
 
@@ -117,16 +121,66 @@ runs:
           exit 1
         fi
 
-        # ---- Image URI and Dockerfile ----
-        DOCKER_IMAGE_URI="${{ inputs.docker-image-name }}"
-        if [[ -n "${{ inputs.docker-repository-uri }}" ]]; then
-          DOCKER_IMAGE_URI="${{ inputs.docker-repository-uri }}/${{ inputs.docker-image-name }}"
-        fi
-        echo "DOCKER_IMAGE_URI=${DOCKER_IMAGE_URI}" >> "$GITHUB_OUTPUT"
+        # ---- Destination repositories (newline- or comma-separated, trimmed, de-duplicated) ----
+        mapfile -t REPOSITORY_URIS < <(
+          tr ',' '\n' <<<"${DOCKER_REPOSITORY_URIS}" \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's#/*$##' \
+            | awk 'NF && !seen[$0]++'
+        )
 
-        DOCKER_REPOSITORY_HOSTNAME="$(echo "${{ inputs.docker-repository-uri }}" | awk -F/ '{print $1}')"
+        # ---- Image URIs (first one is the primary, used e.g. for Trivy scan) ----
+        IMAGE_URIS=()
+        for repo in "${REPOSITORY_URIS[@]}"; do
+          IMAGE_URIS+=("${repo}/${{ inputs.docker-image-name }}")
+        done
+
+        PUSH="true"
+        if (( ${#IMAGE_URIS[@]} == 0 )); then
+          IMAGE_URIS=("${{ inputs.docker-image-name }}")
+          PUSH="false"
+        fi
+        echo "PUSH=${PUSH}" >> "$GITHUB_OUTPUT"
+        echo "DOCKER_IMAGE_URI=${IMAGE_URIS[0]}" >> "$GITHUB_OUTPUT"
+
+        # ---- Image tags for all destinations ----
+        DOCKER_TAGS=()
+        for uri in "${IMAGE_URIS[@]}"; do
+          DOCKER_TAGS+=("${uri}:${{ inputs.docker-image-tag }}")
+          if [[ "${{ inputs.docker-image-tag-latest }}" == "1" ]]; then
+            DOCKER_TAGS+=("${uri}:latest")
+          fi
+        done
+        {
+          echo "DOCKER_TAGS<<EOF"
+          printf '%s\n' "${DOCKER_TAGS[@]}"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        # ---- Registry hostname for 'docker-setup' (Docker Hub login is driven by dockerhub-* inputs) ----
+        # Docker Hub: 'docker.io', 'index.docker.io', 'registry-1.docker.io' or a first segment without '.'/':'
+        mapfile -t REGISTRY_HOSTNAMES < <(
+          printf '%s\n' "${REPOSITORY_URIS[@]}" | awk -F/ '
+            NF {
+              h = $1
+              if (h ~ /^(index\.|registry-1\.)?docker\.io$/) next
+              if (h !~ /[.:]/ && h != "localhost") next
+              if (!seen[h]++) print h
+            }'
+        )
+
+        if (( ${#REGISTRY_HOSTNAMES[@]} > 1 )); then
+          echo "::error::Only one non-Docker Hub registry hostname is supported, got: ${REGISTRY_HOSTNAMES[*]}"
+          exit 1
+        fi
+
+        DOCKER_REPOSITORY_HOSTNAME="${REGISTRY_HOSTNAMES[0]:-}"
+        if [[ -z "$DOCKER_REPOSITORY_HOSTNAME" && ${#REPOSITORY_URIS[@]} -gt 0 ]]; then
+          # Docker Hub only: keep the previous behaviour of passing its hostname
+          DOCKER_REPOSITORY_HOSTNAME="${REPOSITORY_URIS[0]%%/*}"
+        fi
         echo "DOCKER_REPOSITORY_HOSTNAME=${DOCKER_REPOSITORY_HOSTNAME}" >> "$GITHUB_OUTPUT"
 
+        # ---- Dockerfile ----
         DOCKERFILE="${{ inputs.docker-context }}/Dockerfile"
         if [[ -n "${{ inputs.dockerfile }}" ]]; then
           DOCKERFILE="${{ inputs.dockerfile }}"
@@ -196,7 +250,7 @@ runs:
         platforms: ${{ inputs.platforms }}
 
     #
-    # Build and push Docker image
+    # Build and push Docker image (single build, pushed to every destination repository)
     #
     - name: docker/build-push
       uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0 - https://github.com/docker/build-push-action/releases
@@ -204,11 +258,9 @@ runs:
         # Cache
         # cache-from: type=gha # = GitHub Actions Cache
         # cache-to: type=gha,mode=max
-        # Destination registry & image info
-        push: ${{ inputs.docker-repository-uri != '' }}
-        tags: |-
-          ${{ steps.setup-action.outputs.DOCKER_IMAGE_URI }}:${{ inputs.docker-image-tag }}
-          ${{ inputs.docker-image-tag-latest == '1' && format('{0}:latest', steps.setup-action.outputs.DOCKER_IMAGE_URI) || '' }}
+        # Destination registries & image info
+        push: ${{ steps.setup-action.outputs.PUSH == 'true' }}
+        tags: ${{ steps.setup-action.outputs.DOCKER_TAGS }}
         # Docker image build context
         context: ${{ inputs.docker-context }}
         file: ${{ steps.setup-action.outputs.DOCKERFILE }}
@@ -223,6 +275,7 @@ runs:
 
     #
     # Scan Docker image (Trivy): table in CI logs always, SARIF to Security tab on master only
+    # (all destinations share the same digest, so scanning the primary one is enough)
     #
     - name: trivy/scan
       uses: indykite/.github/.github/actions/trivy@master
