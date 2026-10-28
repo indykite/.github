@@ -60,6 +60,14 @@ inputs:
     description: Jira Cloud API token for the dedicated Trivy service account, e.g. secrets.JIRA_API_TOKEN.
     required: false
     default: ''
+  jira-cloud-id:
+    description: Jira Cloud ID from secrets.JIRA_CLOUD_ID.
+    required: false
+    default: ''
+  jira-watchers:
+    description: JSON array of Jira account IDs from secrets.TRIVY_JIRA_WATCHERS.
+    required: false
+    default: '[]'
   github-app-client-id:
     description: Non-secret ik-code-writer App client ID from vars.IK_CODE_WRITER_CLIENT_ID.
     required: false
@@ -295,5 +303,7 @@ runs:
       with:
         slack-bot-token: ${{ inputs.slack-bot-token }}
         jira-api-token: ${{ inputs.jira-api-token }}
+        jira-cloud-id: ${{ inputs.jira-cloud-id }}
+        jira-watchers: ${{ inputs.jira-watchers }}
         github-app-client-id: ${{ inputs.github-app-client-id }}
         github-app-private-key: ${{ inputs.github-app-private-key }}

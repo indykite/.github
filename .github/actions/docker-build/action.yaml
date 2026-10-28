@@ -100,6 +100,30 @@ inputs:
     description: Trivy exit code when vulnerabilities are found (for example '0' to not fail, '1' to fail).
     required: false
     default: "1"
+  slack-bot-token:
+    description: Slack bot token from secrets.SLACK_BOT_TOKEN for Trivy notifications.
+    required: false
+    default: ""
+  jira-api-token:
+    description: Jira service-account API token from secrets.JIRA_API_TOKEN for Trivy notifications.
+    required: false
+    default: ""
+  jira-cloud-id:
+    description: Jira Cloud ID from secrets.JIRA_CLOUD_ID.
+    required: false
+    default: ""
+  jira-watchers:
+    description: JSON array of Jira account IDs from secrets.TRIVY_JIRA_WATCHERS.
+    required: false
+    default: "[]"
+  github-app-client-id:
+    description: ik-code-writer App client ID from vars.IK_CODE_WRITER_CLIENT_ID for Trivy suppression PRs.
+    required: false
+    default: ""
+  github-app-private-key:
+    description: ik-code-writer App private key from secrets.IK_CODE_WRITER_PEM for Trivy suppression PRs.
+    required: false
+    default: ""
 
 #
 runs:
@@ -288,3 +312,9 @@ runs:
         scanners: vuln,secret,misconfig
         trivy-db-force-update: ${{ inputs.trivy-db-force-update }}
         exit-code: ${{ inputs.trivy-exit-code }}
+        slack-bot-token: ${{ inputs.slack-bot-token }}
+        jira-api-token: ${{ inputs.jira-api-token }}
+        jira-cloud-id: ${{ inputs.jira-cloud-id }}
+        jira-watchers: ${{ inputs.jira-watchers }}
+        github-app-client-id: ${{ inputs.github-app-client-id }}
+        github-app-private-key: ${{ inputs.github-app-private-key }}
