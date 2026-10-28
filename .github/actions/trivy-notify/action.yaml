@@ -21,6 +21,8 @@
 # and remains subject to required checks and approvals. A human removes the entry once the CVE is
 # resolved or permanently accepted. The suppression PR and Slack summary are created independently
 # of the Jira call's outcome; entries reference the workflow run when no Jira key is returned.
+# Before creating a Jira issue, the action searches saved filter 11525 (open vulnerabilities) for
+# the exact generated title and reuses an existing match. Search failures fail closed to avoid duplicates.
 #
 # The caller passes the non-secret App client ID and organization-visible private key. This action mints
 # a repo-scoped installation token only after new CVE entries are generated, so the resulting PR
@@ -39,12 +41,21 @@ inputs:
     description: >-
       Slack bot token (chat.postMessage), e.g. secrets.SLACK_BOT_TOKEN. Composite actions
       cannot read the 'secrets' context directly, so the caller must pass this explicitly.
-    required: true
+      If missing, Slack notifications are skipped with a warning.
+    required: false
+    default: ''
   jira-api-token:
     description: >-
       Jira Cloud API token for the dedicated Trivy service account, e.g. secrets.JIRA_API_TOKEN.
       The token must have Jira issue creation permission in the configured project.
     required: true
+  jira-cloud-id:
+    description: Jira Cloud ID from secrets.JIRA_CLOUD_ID.
+    required: true
+  jira-watchers:
+    description: JSON array of Jira account IDs from secrets.TRIVY_JIRA_WATCHERS.
+    required: false
+    default: '[]'
   github-app-client-id:
     description: Non-secret ik-code-writer App client ID.
     required: false
@@ -81,11 +92,67 @@ runs:
       shell: bash
       env:
         JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_CLOUD_ID: ${{ inputs.jira-cloud-id }}
         JIRA_PAYLOAD: ${{ steps.find.outputs.jira_payload }}
       run: |-
         set -euo pipefail
 
-        API_URL="https://api.atlassian.com/ex/jira/b5e52b9c-3a24-41f6-bf37-38d31606410e/rest/api/3/issue"
+        : "${JIRA_CLOUD_ID:?Jira Cloud ID must be supplied via jira-cloud-id}"
+        API_BASE="https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}/rest/api/3"
+        SEARCH_URL="${API_BASE}/search/jql"
+        API_URL="${API_BASE}/issue"
+        SUMMARY="$(jq -er '.fields.summary | strings' <<<"${JIRA_PAYLOAD}")"
+        ESCAPED_SUMMARY="$(jq -rn --arg summary "${SUMMARY}" '$summary | gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\"")')"
+        JQL="filter = 11525 AND statusCategory in (\"To Do\", \"In Progress\") AND summary ~ \"\\\"${ESCAPED_SUMMARY}\\\"\" ORDER BY updated DESC"
+
+        EXISTING_ISSUE_KEY=''
+        NEXT_PAGE_TOKEN=''
+        while :; do
+          SEARCH_ARGS=(
+            --get
+            -H "Authorization: Bearer ${JIRA_API_TOKEN}"
+            -H 'Accept: application/json'
+            --data-urlencode "jql=${JQL}"
+            --data-urlencode 'maxResults=100'
+            --data-urlencode 'fields=summary,status'
+          )
+          if [[ -n "${NEXT_PAGE_TOKEN}" ]]; then
+            SEARCH_ARGS+=(--data-urlencode "nextPageToken=${NEXT_PAGE_TOKEN}")
+          fi
+
+          if ! SEARCH_RESPONSE="$(curl -sS -w '\n%{http_code}' "${SEARCH_ARGS[@]}" "${SEARCH_URL}")"; then
+            echo "::warning::Jira duplicate check failed; issue creation skipped to avoid a duplicate for ${SUMMARY}"
+            exit 1
+          fi
+
+          SEARCH_STATUS="$(printf '%s' "${SEARCH_RESPONSE}" | tail -n1)"
+          SEARCH_BODY="$(printf '%s' "${SEARCH_RESPONSE}" | sed '$d')"
+          if [[ "${SEARCH_STATUS}" != 2[0-9][0-9] ]] || ! jq -e \
+            '(.issues | type == "array") and (.isLast | type == "boolean")' \
+            <<<"${SEARCH_BODY}" >/dev/null 2>&1; then
+            echo "::warning::Jira duplicate check failed (HTTP/${SEARCH_STATUS}); issue creation skipped to avoid a duplicate for ${SUMMARY}"
+            exit 1
+          fi
+
+          EXISTING_ISSUE_KEY="$(jq -r --arg summary "${SUMMARY}" '[.issues[] | select(.fields.summary == $summary) | .key] | first // ""' <<<"${SEARCH_BODY}")"
+          IS_LAST="$(jq -er '.isLast | tostring' <<<"${SEARCH_BODY}")"
+          if [[ -n "${EXISTING_ISSUE_KEY}" ]] || [[ "${IS_LAST}" == true ]]; then
+            break
+          fi
+
+          NEXT_PAGE_TOKEN="$(jq -er '.nextPageToken | strings | select(length > 0)' <<<"${SEARCH_BODY}")" || {
+            echo "::warning::Jira duplicate check returned incomplete pagination; issue creation skipped to avoid a duplicate for ${SUMMARY}"
+            exit 1
+          }
+        done
+
+        RESPONSE_BODY='{}'
+        HTTP_STATUS_CODE=200
+        ISSUE_KEY=''
+        if [[ -n "${EXISTING_ISSUE_KEY}" ]]; then
+          echo "Jira issue ${EXISTING_ISSUE_KEY} already matches the title in filter 11525; skipping creation"
+          RESPONSE_BODY="$(jq -cn --arg issue_key "${EXISTING_ISSUE_KEY}" '{created: [{issue_key: $issue_key}]}')"
+        else
         CREATE_PAYLOAD="$(jq -c '{fields: .fields}' <<<"${JIRA_PAYLOAD}")"
         RESPONSE="$(curl -sS -w '\n%{http_code}' \
           -X POST \
@@ -98,9 +165,9 @@ runs:
         HTTP_STATUS_CODE="$(printf '%s' "${RESPONSE}" | tail -n1)"
         HTTP_BODY="$(printf '%s' "${RESPONSE}" | sed '$d')"
         ISSUE_KEY="$(jq -r '.key // empty' <<<"${HTTP_BODY}" 2>/dev/null || true)"
-        RESPONSE_BODY='{}'
         if [[ -n "${ISSUE_KEY}" ]]; then
           RESPONSE_BODY="$(jq -cn --arg issue_key "${ISSUE_KEY}" '{created: [{issue_key: $issue_key}]}')"
+        fi
         fi
 
         {
@@ -109,7 +176,7 @@ runs:
           echo 'JIRA_API_CREATE_EOF'
         } >>"${GITHUB_OUTPUT}"
 
-        if [[ "${HTTP_STATUS_CODE}" != 2[0-9][0-9] || -z "${ISSUE_KEY}" ]]; then
+        if [[ -z "${EXISTING_ISSUE_KEY}" && ( "${HTTP_STATUS_CODE}" != 2[0-9][0-9] || -z "${ISSUE_KEY}" ) ]]; then
           echo "Jira issue creation failed (HTTP/${HTTP_STATUS_CODE})" >&2
           echo "${HTTP_BODY}" >&2
           exit 1
@@ -121,10 +188,21 @@ runs:
       shell: bash
       env:
         JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_CLOUD_ID: ${{ inputs.jira-cloud-id }}
+        JIRA_WATCHERS: ${{ inputs.jira-watchers }}
         JIRA_RESPONSE_BODY: ${{ steps.jira_create.outputs.body }}
       run: |-
+        set -euo pipefail
+
         ISSUE_KEY="$(jq -r '.created[0].issue_key' <<<"${JIRA_RESPONSE_BODY}")"
-        WATCHER_IDS=("63f6268789de3d475af53c13" "712020:04103f92-5934-4a13-a12b-fa3e1b3cec7b")
+        if ! jq -e 'type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9:_-]+$"))' \
+          <<<"${JIRA_WATCHERS:-[]}" >/dev/null 2>&1; then
+          echo "::warning::Invalid jira-watchers JSON; expected an array of account IDs. Skipping watchers for ${ISSUE_KEY}"
+          exit 0
+        fi
+        WATCHER_LIST="$(jq -r 'unique[]' <<<"${JIRA_WATCHERS:-[]}")"
+        [[ -n "${WATCHER_LIST}" ]] || exit 0
+        mapfile -t WATCHER_IDS <<<"${WATCHER_LIST}"
         for ACCOUNT_ID in "${WATCHER_IDS[@]}"; do
           PAYLOAD="$(jq -cn --arg account_id "${ACCOUNT_ID}" '$account_id')"
           if ! HTTP_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
@@ -132,7 +210,7 @@ runs:
             -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
             -H 'Content-Type: application/json' \
             -d "${PAYLOAD}" \
-            "https://api.atlassian.com/ex/jira/b5e52b9c-3a24-41f6-bf37-38d31606410e/rest/api/3/issue/${ISSUE_KEY}/watchers")"; then
+            "https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}/rest/api/3/issue/${ISSUE_KEY}/watchers")"; then
             echo "::warning::Jira watcher request failed for ${ACCOUNT_ID} on ${ISSUE_KEY}"
           elif [[ "${HTTP_STATUS}" != 2[0-9][0-9] ]]; then
             echo "::warning::Could not add Jira watcher ${ACCOUNT_ID} to ${ISSUE_KEY} (HTTP/${HTTP_STATUS}); check the configured account ID and Jira response"
@@ -216,9 +294,14 @@ runs:
           echo "::notice::Auto-merge is disabled; review and merge the Trivy suppression PR manually"
         fi
 
+    - name: trivy-notify/warn-slack-token-missing
+      if: ${{ always() && steps.find.outputs.new_count > 0 && inputs.slack-bot-token == '' }}
+      shell: bash
+      run: echo "::warning::Slack notification skipped; pass secrets.SLACK_BOT_TOKEN as slack-bot-token"
+
     - name: trivy-notify/slack-payload
       id: slack_payload
-      if: ${{ always() && steps.find.outputs.new_count > 0 }}
+      if: ${{ always() && steps.find.outputs.new_count > 0 && inputs.slack-bot-token != '' }}
       shell: bash
       env:
         SLACK_CHANNEL: ${{ steps.find.outputs.slack_channel }}
@@ -234,7 +317,7 @@ runs:
 
     - name: trivy-notify/slack-notify
       uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0 - https://github.com/slackapi/slack-github-action/releases
-      if: ${{ always() && steps.find.outputs.new_count > 0 && steps.slack_payload.outputs.payload != '' }}
+      if: ${{ always() && steps.find.outputs.new_count > 0 && steps.slack_payload.outputs.payload != '' && inputs.slack-bot-token != '' }}
       continue-on-error: true
       with:
         token: ${{ inputs.slack-bot-token }}

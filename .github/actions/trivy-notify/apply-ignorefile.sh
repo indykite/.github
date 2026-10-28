@@ -33,9 +33,9 @@ fi
 KEYS_JSON="$(jq -c '(.created // []) | map(select(.cve_id != null and .issue_key != null) | {(.cve_id): .issue_key}) | add // {}' <<<"${RESPONSE_BODY}" 2>/dev/null || echo '{}')"
 GLOBAL_ISSUE_KEY="$(jq -r '[.created[]? | select(.cve_id == null and .issue_key != null) | .issue_key] | first // ""' <<<"${RESPONSE_BODY}")"
 
-# Unique created issue keys, comma-separated, for the caller's commit message (empty when the
+# Unique created issue keys, bracketed for Jira autolinks in the suppression PR (empty when the
 # Jira response didn't return any -- see the header comment above).
-CREATED_ISSUE_KEYS="$(jq -rn --argjson keys "${KEYS_JSON}" --arg global_key "${GLOBAL_ISSUE_KEY}" '([$global_key] + [$keys[]]) | map(select(. != "")) | unique | join(", ")')"
+CREATED_ISSUE_KEYS="$(jq -rn --argjson keys "${KEYS_JSON}" --arg global_key "${GLOBAL_ISSUE_KEY}" '([$global_key] + [$keys[]]) | map(select(. != "")) | unique | map("[" + . + "]") | join(", ")')"
 echo "created_issue_keys=${CREATED_ISSUE_KEYS}" >>"${GITHUB_OUTPUT}"
 
 JIRA_TEXT="$(jq -rn \
