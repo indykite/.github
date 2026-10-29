@@ -21,6 +21,16 @@ set -euo pipefail
 : "${DEFAULT_JIRA_PROJECT:?DEFAULT_JIRA_PROJECT is required}"
 : "${DEFAULT_JIRA_TEAM:?DEFAULT_JIRA_TEAM is required}"
 : "${DEFAULT_JIRA_LABELS:?DEFAULT_JIRA_LABELS is required}"
+: "${EVENT_NAME:?EVENT_NAME is required}"
+: "${GIT_REF:?GIT_REF is required}"
+
+# ---- Default branch only: 'schedule' always runs on it; anything else (PRs, feature-branch
+#      pushes, tags/releases) must target it explicitly, otherwise skip all notifications ----
+if [[ "${EVENT_NAME}" != "schedule" && "${GIT_REF}" != "refs/heads/${DEFAULT_BRANCH:-}" ]]; then
+    echo "skipping notifications: '${EVENT_NAME}' on '${GIT_REF}' is not the default branch ('${DEFAULT_BRANCH:-unknown}')"
+    echo "new_count=0" >>"${GITHUB_OUTPUT}"
+    exit 0
+fi
 
 if [[ ! -f trivy-results.json ]]; then
     echo "error: trivy-results.json not found -- run the 'trivy' composite action first" >&2

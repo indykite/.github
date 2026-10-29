@@ -9,6 +9,8 @@
 # the workspace) with a repo-wide (non diff-filtered) scan, i.e. on a 'schedule' (or 'push' to
 # the default branch) trigger -- never on 'pull_request' (see 'trivy/action.yaml' failure
 # policy: vulnerabilities never block a PR, they are only surfaced here).
+# Enforced in 'script.sh': any run whose ref is not the default branch (PRs, feature-branch
+# pushes, tags/releases) is skipped with 'new_count=0', so no Jira/PR/Slack step runs.
 #
 # "New" vulnerability = any entry present in the normal 'Results[].Vulnerabilities' of a scan
 # run with 'ignorefile: .trivyignore.yaml' configured (see repo '.trivy.yaml'): trivy itself
@@ -22,7 +24,7 @@
 # resolved or permanently accepted. The suppression PR and Slack summary are created independently
 # of the Jira call's outcome; entries reference the workflow run when no Jira key is returned.
 # Before creating a Jira issue, the action searches saved filter 11525 (open vulnerabilities) for
-# the exact generated title and reuses an existing match. Search failures fail closed to avoid duplicates.
+# an existing repo/package-version summary, regardless of the CVE count, and reuses that issue.
 #
 # The caller passes the non-secret App client ID and organization-visible private key. This action mints
 # a repo-scoped installation token only after new CVE entries are generated, so the resulting PR
@@ -83,6 +85,9 @@ runs:
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         RUN_ID: ${{ github.run_id }}
         REPO: ${{ github.repository }}
+        EVENT_NAME: ${{ github.event_name }}
+        GIT_REF: ${{ github.ref }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: ${{ github.action_path }}/script.sh
 
     - name: trivy-notify/jira-create
@@ -92,17 +97,20 @@ runs:
       shell: bash
       env:
         JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_EMAIL: issue-creation-ohsl8s8d8s@serviceaccount.atlassian.com
         JIRA_CLOUD_ID: ${{ inputs.jira-cloud-id }}
         JIRA_PAYLOAD: ${{ steps.find.outputs.jira_payload }}
       run: |-
         set -euo pipefail
 
+        : "${JIRA_EMAIL:?Jira service-account email must be supplied}"
         : "${JIRA_CLOUD_ID:?Jira Cloud ID must be supplied via jira-cloud-id}"
         API_BASE="https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}/rest/api/3"
         SEARCH_URL="${API_BASE}/search/jql"
         API_URL="${API_BASE}/issue"
         SUMMARY="$(jq -er '.fields.summary | strings' <<<"${JIRA_PAYLOAD}")"
-        ESCAPED_SUMMARY="$(jq -rn --arg summary "${SUMMARY}" '$summary | gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\"")')"
+        SUMMARY_PREFIX="$(jq -rn --arg summary "${SUMMARY}" '$summary | sub(" [0-9]+ CVE\\(s\\)$"; "")')"
+        ESCAPED_SUMMARY="$(jq -rn --arg summary "${SUMMARY_PREFIX}" '$summary | gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\"")')"
         JQL="filter = 11525 AND statusCategory in (\"To Do\", \"In Progress\") AND summary ~ \"\\\"${ESCAPED_SUMMARY}\\\"\" ORDER BY updated DESC"
 
         EXISTING_ISSUE_KEY=''
@@ -110,7 +118,7 @@ runs:
         while :; do
           SEARCH_ARGS=(
             --get
-            -H "Authorization: Bearer ${JIRA_API_TOKEN}"
+            --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}"
             -H 'Accept: application/json'
             --data-urlencode "jql=${JQL}"
             --data-urlencode 'maxResults=100'
@@ -121,8 +129,8 @@ runs:
           fi
 
           if ! SEARCH_RESPONSE="$(curl -sS -w '\n%{http_code}' "${SEARCH_ARGS[@]}" "${SEARCH_URL}")"; then
-            echo "::warning::Jira duplicate check failed; issue creation skipped to avoid a duplicate for ${SUMMARY}"
-            exit 1
+            echo "::notice::Jira lookup unavailable; continuing without a Jira link for ${SUMMARY}"
+            exit 0
           fi
 
           SEARCH_STATUS="$(printf '%s' "${SEARCH_RESPONSE}" | tail -n1)"
@@ -130,19 +138,32 @@ runs:
           if [[ "${SEARCH_STATUS}" != 2[0-9][0-9] ]] || ! jq -e \
             '(.issues | type == "array") and (.isLast | type == "boolean")' \
             <<<"${SEARCH_BODY}" >/dev/null 2>&1; then
-            echo "::warning::Jira duplicate check failed (HTTP/${SEARCH_STATUS}); issue creation skipped to avoid a duplicate for ${SUMMARY}"
-            exit 1
+            echo "::notice::Jira lookup unavailable (HTTP/${SEARCH_STATUS}); continuing without a Jira link for ${SUMMARY}"
+            exit 0
           fi
 
-          EXISTING_ISSUE_KEY="$(jq -r --arg summary "${SUMMARY}" '[.issues[] | select(.fields.summary == $summary) | .key] | first // ""' <<<"${SEARCH_BODY}")"
+          EXISTING_ISSUE_KEY="$(
+            jq -r \
+              --arg summary_prefix "${SUMMARY_PREFIX}" \
+              '[
+                .issues[]
+                | select(
+                    .fields.summary as $summary
+                    | ($summary | startswith($summary_prefix + " "))
+                      and ($summary | endswith(" CVE(s)"))
+                  )
+                | .key
+              ] | first // ""' \
+              <<<"${SEARCH_BODY}"
+          )"
           IS_LAST="$(jq -er '.isLast | tostring' <<<"${SEARCH_BODY}")"
           if [[ -n "${EXISTING_ISSUE_KEY}" ]] || [[ "${IS_LAST}" == true ]]; then
             break
           fi
 
           NEXT_PAGE_TOKEN="$(jq -er '.nextPageToken | strings | select(length > 0)' <<<"${SEARCH_BODY}")" || {
-            echo "::warning::Jira duplicate check returned incomplete pagination; issue creation skipped to avoid a duplicate for ${SUMMARY}"
-            exit 1
+            echo "::notice::Jira lookup returned incomplete results; continuing without a Jira link for ${SUMMARY}"
+            exit 0
           }
         done
 
@@ -150,13 +171,13 @@ runs:
         HTTP_STATUS_CODE=200
         ISSUE_KEY=''
         if [[ -n "${EXISTING_ISSUE_KEY}" ]]; then
-          echo "Jira issue ${EXISTING_ISSUE_KEY} already matches the title in filter 11525; skipping creation"
+          echo "Reusing Jira issue ${EXISTING_ISSUE_KEY} for the matching repo/package version; skipping creation"
           RESPONSE_BODY="$(jq -cn --arg issue_key "${EXISTING_ISSUE_KEY}" '{created: [{issue_key: $issue_key}]}')"
         else
         CREATE_PAYLOAD="$(jq -c '{fields: .fields}' <<<"${JIRA_PAYLOAD}")"
         RESPONSE="$(curl -sS -w '\n%{http_code}' \
           -X POST \
-          -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+          --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
           -H 'Accept: application/json' \
           -H 'Content-Type: application/json' \
           -d "${CREATE_PAYLOAD}" \
@@ -177,9 +198,7 @@ runs:
         } >>"${GITHUB_OUTPUT}"
 
         if [[ -z "${EXISTING_ISSUE_KEY}" && ( "${HTTP_STATUS_CODE}" != 2[0-9][0-9] || -z "${ISSUE_KEY}" ) ]]; then
-          echo "Jira issue creation failed (HTTP/${HTTP_STATUS_CODE})" >&2
-          echo "${HTTP_BODY}" >&2
-          exit 1
+          echo "::notice::Jira did not return an issue key; continuing without a Jira link for ${SUMMARY}"
         fi
 
     - name: trivy-notify/jira-watchers
@@ -188,13 +207,15 @@ runs:
       shell: bash
       env:
         JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_EMAIL: issue-creation-ohsl8s8d8s@serviceaccount.atlassian.com
         JIRA_CLOUD_ID: ${{ inputs.jira-cloud-id }}
         JIRA_WATCHERS: ${{ inputs.jira-watchers }}
         JIRA_RESPONSE_BODY: ${{ steps.jira_create.outputs.body }}
       run: |-
         set -euo pipefail
 
-        ISSUE_KEY="$(jq -r '.created[0].issue_key' <<<"${JIRA_RESPONSE_BODY}")"
+        ISSUE_KEY="$(jq -r '.created[0].issue_key // empty' <<<"${JIRA_RESPONSE_BODY}")"
+        [[ -n "${ISSUE_KEY}" ]] || exit 0
         if ! jq -e 'type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9:_-]+$"))' \
           <<<"${JIRA_WATCHERS:-[]}" >/dev/null 2>&1; then
           echo "::warning::Invalid jira-watchers JSON; expected an array of account IDs. Skipping watchers for ${ISSUE_KEY}"
@@ -207,7 +228,7 @@ runs:
           PAYLOAD="$(jq -cn --arg account_id "${ACCOUNT_ID}" '$account_id')"
           if ! HTTP_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
             -X POST \
-            -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+            --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
             -H 'Content-Type: application/json' \
             -d "${PAYLOAD}" \
             "https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}/rest/api/3/issue/${ISSUE_KEY}/watchers")"; then
@@ -268,7 +289,7 @@ runs:
         body: |-
           Add temporary Trivy ignore entries for newly reported CVEs.
 
-          Jira issue(s): ${{ steps.apply_ignorefile.outputs.created_issue_keys || 'creation failed or unconfirmed; follow up using the workflow run' }}
+          Jira issue(s): ${{ steps.apply_ignorefile.outputs.created_issue_keys || 'not linked' }}
           Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           The entries reference confirmed Jira issues or the workflow run and should be removed after remediation or formal risk acceptance.
